@@ -10,7 +10,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.1
+ *      Version:  1.2
  *
  *         Date:  2008-05-17
  *
@@ -240,6 +240,35 @@
         $o->publisher = (string)$i->ItemAttributes->Publisher;
         $o->publication_date = (string)$i->ItemAttributes->PublicationDate;
         $o->isbn = (int)$i->ItemAttributes->ISBN;
+
+        $a[] = $o;
+      }
+      return $a;
+    }
+  }
+
+  class Music extends AmazonSearch {
+    public static function getDefaultObject() {
+        $o = parent::getDefaultObject();
+        $o->artist = '';
+        $o->label = '';
+        $o->release_date = '';
+
+        return $o;
+    }
+
+    public function getObjects() {
+      $a = array();
+      foreach($this->xml->Items->Item as $i) {
+        $o = self::getDefaultObject();
+
+        $o->asin = (string)$i->ASIN;
+        if(!empty($i->MediumImage->URL))
+          $o->image = array('url' => (string)$i->MediumImage->URL, 'width' => (int)$i->MediumImage->Width, 'height' => (int)$i->MediumImage->Height);
+        $o->title = (string)$i->ItemAttributes->Title;
+        $o->artist = (string)$i->ItemAttributes->Artist;
+        $o->label = (string)$i->ItemAttributes->Label;
+        $o->release_date = (string)$i->ItemAttributes->ReleaseDate;
 
         $a[] = $o;
       }
