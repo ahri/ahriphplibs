@@ -28,6 +28,7 @@
  *                string[]  getCol          (query[, name])
  *                object    getRow          (query[, name])
  *                object[]  getResults      (query[, name])
+ *                int       timestamp       (date_or_datetime)
  *
  *                resource  query           (query[, name])
  *                int       getInsertId     ([name])
@@ -44,7 +45,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.0
+ *      Version:  1.1
  *
  *         Date:  2008-05-13
  *
@@ -411,6 +412,18 @@
       }
       self::putOutput($array, $name);
       return $array;
+    }
+
+    public static function timestamp($date_or_datetime) {
+      if(preg_match('#^(\d{4})-(\d{2})-(\d{2})$#', $date_or_datetime, $m)) {
+        return mktime(0, 0, 0, $m[2], $m[3], $m[1]);
+      }
+      elseif(preg_match('#^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$#', $date_or_datetime, $m)) {
+        return mktime($m[4], $m[5], $m[6], $m[2], $m[3], $m[1]);
+      }
+      else {
+        throw new SSqlInputException('Must pass either a date (YYYY-MM-DD) or datetime (YYYY-MM-DD HH:MM:SS)');
+      }
     }
 
     # output debug information on the previous input/output
