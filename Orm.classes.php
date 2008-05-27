@@ -56,18 +56,8 @@
  ******************************************************************************/
 
   /*
-    @Title:         
-
-    @License:       Currently unlicensed, work in progress
-                    Copyright 2006-2007 Adam Piper, adamp@ahri.net
-
-    @Version:       0.9.8
-
-    @Altered:       2007-11-08
-  */
-
-  /*
   TODO:
+    Remove all timestamping stuff and move it to SSql
 
     Count on mtos - ${rname}_count field?
 
