@@ -10,9 +10,9 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.2
+ *      Version:  1.3
  *
- *         Date:  2008-05-17
+ *         Date:  2008-05-22
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -253,6 +253,8 @@
         $o->artist = '';
         $o->label = '';
         $o->release_date = '';
+        $o->image_medium = array('url' => Amazon::$default_image_url, 'width' => Amazon::$default_image_width, 'height' => Amazon::$default_image_height);
+        $o->image_large = array('url' => Amazon::$default_image_url, 'width' => Amazon::$default_image_width, 'height' => Amazon::$default_image_height);
 
         return $o;
     }
@@ -264,7 +266,9 @@
 
         $o->asin = (string)$i->ASIN;
         if(!empty($i->MediumImage->URL))
-          $o->image = array('url' => (string)$i->MediumImage->URL, 'width' => (int)$i->MediumImage->Width, 'height' => (int)$i->MediumImage->Height);
+          $o->image_medium = array('url' => (string)$i->MediumImage->URL, 'width' => (int)$i->MediumImage->Width, 'height' => (int)$i->MediumImage->Height);
+        if(!empty($i->LargeImage->URL))
+          $o->image_large = array('url' => (string)$i->LargeImage->URL, 'width' => (int)$i->LargeImage->Width, 'height' => (int)$i->LargeImage->Height);
         $o->title = (string)$i->ItemAttributes->Title;
         $o->artist = (string)$i->ItemAttributes->Artist;
         $o->label = (string)$i->ItemAttributes->Label;
