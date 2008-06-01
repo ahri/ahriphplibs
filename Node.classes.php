@@ -24,6 +24,7 @@
  *                  __construct($content, inline = false)
  *                  __toString()
  *                  getContent()
+ *                  setContent($content)
  *
  *                EntityNode::
  *                  __construct($name, $content, $inline)
@@ -34,14 +35,15 @@
  *                  addChild(Node $node)
  *                  removeChild(Node $node)
  *
- *                  (note that objects of this class are iterable with foreach)
+ *                  (note that objects of this class are iterable with foreach,
+ *                  but that use of ->removeChild() while looping is'nt advised)
  *                
  *
  * Requirements:  PHP 5.2.0+
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.13
+ *      Version:  1.14
  *
  *         Date:  2008-05-19
  *
@@ -100,6 +102,10 @@
 
     public function getContent() {
       return $this->content;
+    }
+
+    public function setContent($content) {
+      $this->content = $content;
     }
 
     protected function render($indent_val = 0, $inline_val = 0, $preserve_content = false) {
