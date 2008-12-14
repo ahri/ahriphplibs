@@ -36,14 +36,14 @@
  *                  removeChild(Node $node)
  *
  *                  (note that objects of this class are iterable with foreach,
- *                  but that use of ->removeChild() while looping is'nt advised)
+ *                  but that use of ->removeChild() while looping isn't advised)
  *                
  *
  * Requirements:  PHP 5.2.0+
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.14
+ *      Version:  1.15
  *
  *         Date:  2008-05-19
  *
@@ -113,17 +113,16 @@
 
       # content
       $return = '';
-      $indent = $inline_val? '' : parent::indent($indent_val);
+      $indent = $inline_val || $preserve_content? '' : parent::indent($indent_val);
       $last = ($size = sizeof($lines = explode("\n", $this->content))) - 1;
 
       for($i = 0; $i < $size; $i++) {
         $line = str_replace('  ', ' ', $lines[$i]);
         if(!$inline_val) $line = preg_replace('#^\s*#', '', $line);
         $return .= sprintf('%s%s', $indent, htmlspecialchars($line, ENT_QUOTES, 'UTF-8'));
-        if($inline_val && !$preserve_content) {
-          if($i != $last) $return .= ' ';
-        }
-        else $return .= "\n";
+
+        # line ending...
+        if($i != $last) $return .= ($inline_val && !$preserve_content)? ' ' : "\n";
       }
 
       return $return;
@@ -172,7 +171,7 @@
           unset($this->children[$i]);
         }
       }
-      if(!$found) throw new Exception('Child node not found');
+      if(!$found) throw new NodeInputException('Child node not found');
       return $n;
     }
 
@@ -184,7 +183,7 @@
     }
 
     public function __get($property) {
-      if(!isset($this->properties[$property])) throw new Exception('Property '.$property.' is not set.');
+      if(!isset($this->properties[$property])) throw new NodeInputException('Property '.$property.' is not set.');
       return $this->properties[$property];
     }
 
@@ -222,7 +221,7 @@
     }
 
     public function __call($tag, $args) {
-      # args: 0 => content, 1 => inline
+      # args: 0 => content, 1 => inline_val, 2 => preserve
       if(!isset($args[0])) $args[0] = null;
       if(!isset($args[1])) $args[1] = null;
       if(!isset($args[2])) $args[2] = null;
@@ -230,6 +229,8 @@
       return $this->addChild(new $class($tag, $args[0], $args[1], $args[2]));
     }
   }
+
+  class NodeInputException extends Exception {};
 
   /* Tests
   $html = new EntityNode('html');
