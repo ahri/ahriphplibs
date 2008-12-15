@@ -21,13 +21,13 @@
  *                echo $html;
  *
  *      Methods:  TextNode::
- *                  __construct($content, inline = false)
+ *                  __construct($content, $inline = false, $preserve_content = false)
  *                  __toString()
  *                  getContent()
  *                  setContent($content)
  *
  *                EntityNode::
- *                  __construct($name, $content, $inline)
+ *                  __construct($name, $content, $inline, $preserve_content = false)
  *                  __toString()
  *                  __call()  -- calls create new child EntityNodes
  *                  __set()   -- vars are converted to properties
