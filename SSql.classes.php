@@ -3,7 +3,7 @@
  *
  *         Name:  SSql - Transparent Singleton SQL Layer
  *
- *    Supported:  MySQL, MySQLi, SQLite, PostgreSQL, MSSQL
+ *    Supported:  Dummy, MySQL, MySQLi, SQLite, PostgreSQL, MSSQL
  *         Note:  !!!!! NEEDS TESTING ON ALL PLATFORMS !!!!!
  *
  *  Description:  I wanted an easy-to-use static DB connector I could tweak to
@@ -45,9 +45,9 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.1
+ *      Version:  1.2
  *
- *         Date:  2008-05-13
+ *         Date:  2009-06-07
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -97,6 +97,8 @@
       self::$connections[$name]->type = $type;
 
       switch($type) {
+        case 'Dummy':
+          break;
         case 'MySQL':
           if($port) $host = sprintf('%s:%d', $host, $port);
           self::$connections[$name]->handle = @mysql_connect($host, $username, $password);
@@ -119,7 +121,7 @@
           self::$connections[$name]->handle = @mssql_connect($host, $username, $password);
           break;
         default:
-          throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types: MySQL, sqlite', $type));
+          throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types', $type));
       }
       if(!self::$connections[$name]->handle) self::throwSqlException($name);
 
@@ -212,6 +214,9 @@
       self::printDebug('query', $query);
       $c = self::getConn($name);
       switch(self::getType($name)) {
+        case 'Dummy':
+          printf('SSql Dummy Query: %s', $query);
+          break;
         case 'MySQL':
           $c->resource = @mysql_query(self::getHandle($name), $query);
           break;
@@ -237,6 +242,8 @@
 
     public static function escape($var, $name = null) {
       switch(self::getType($name)) {
+        case 'Dummy':
+          return $var;
         case 'MySQL':
           return mysql_real_escape_string("$var", self::getHandle($name));
         case 'MySQLi':
@@ -254,6 +261,9 @@
 
     public static function getInsertId($name = null) {
       switch(self::getType($name)) {
+        case 'Dummy':
+          $id = 0;
+          break;
         case 'MySQL':
           $id = @mysql_insert_id(self::getResource($name));
           break;
@@ -271,12 +281,15 @@
         default:
           throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type '.self::getType($name));
       }
-      if(!$id) self::throwSqlException($name);
+      if(is_null($id)) self::throwSqlException($name);
       return $id;
     }
 
     public static function getAffectedRows($name = null) {
       switch(self::getType($name)) {
+        case 'Dummy':
+          $rows = 0;
+          break;
         case 'MySQL':
           $rows = @mysql_affected_rows(self::getResource($name));
           break;
@@ -295,7 +308,7 @@
         default:
           throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type '.self::getType($name));
       }
-      if(!$rows) self::throwSqlException($name);
+      if(is_null($rows)) self::throwSqlException($name);
       return $rows;
     }
 
@@ -307,6 +320,9 @@
     public static function getVar($query, $name = null) {
       $res = self::query($query, $name);
       switch(self::getType($name)) {
+        case 'Dummy':
+          $var = 'Dummy';
+          break;
         case 'MySQL':
           $row = mysql_fetch_row($res);
           $var = $row? reset($row) : null;
@@ -338,6 +354,8 @@
       $res = self::query($query, $name);
       $col = array();
       switch(self::getType($name)) {
+        case 'Dummy':
+          break;
         case 'MySQL':
           while($row = mysql_fetch_row($res)) $col[] = reset($row);
           break;
@@ -364,6 +382,9 @@
     public static function getRow($query, $name = null) {
       $res = self::query($query, $name);
       switch(self::getType($name)) {
+        case 'Dummy':
+          $o = new stdClass();
+          break;
         case 'MySQL':
           $o = mysql_fetch_object($res);
           break;
@@ -392,6 +413,8 @@
       $res = self::query($query, $name);
       $array = array();
       switch(self::getType($name)) {
+        case 'Dummy':
+          break;
         case 'MySQL':
           while($o = mysql_fetch_object($res)) $array[] = $o;
           break;
