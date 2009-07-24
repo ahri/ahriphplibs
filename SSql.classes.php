@@ -23,11 +23,15 @@
  *
  *      Methods:  connect         (type, database[, host, username, password,
  *                                                           name, debug_all])
- *                string    escape          (var[, name])
+ *                string    escape          (var  [, name])
  *                string    getVar          (query[, name])
  *                string[]  getCol          (query[, name])
  *                object    getRow          (query[, name])
  *                object[]  getResults      (query[, name])
+ *                string    getVarFor       (resource[, name])
+ *                string[]  getColFor       (resource[, name])
+ *                object    getRowFor       (resource[, name])
+ *                object[]  getResultsFor   (resource[, name])
  *                int       timestamp       (date_or_datetime)
  *
  *                resource  query           (query[, name])
@@ -42,12 +46,14 @@
  *
  *                void      useName         ([name])
  *                void      debug           ([name]) !!! NOT YET CODED !!!
+ *                bool      validName       ([name])
+ *                string    format          (query)
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.2
+ *      Version:  1.22
  *
- *         Date:  2009-06-07
+ *         Date:  2009-07-14
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -78,383 +84,549 @@
  *
  ******************************************************************************/
 
-  class SSql {
-    private static $default_name = '-';
+class SSql
+{
+        const default_name = '-';
 
-    private static $debug_all = false;
+        private static $debug_all = false;
 
-    private static $connection;
-    private static $connections = array();
+        private static $connection  = NULL;
+        private static $connections = array();
 
-    private function __construct() {}
+        private function __construct() {}
 
-    public static function connect($type, $database, $host = null, $port = null, $username = null, $password = null, $name = null, $debug_all = false) {
-      self::$debug_all = $debug_all;
-      self::checkName($name);
-      $name = $name? $name : self::$default_name;
+        public static function connect($type, $database, $host = NULL, $port = NULL, $username = NULL, $password = NULL, $name = NULL, $debug_all = false)
+        {
+                self::$debug_all = $debug_all;
+                self::name($name);
 
-      self::$connections[$name] = new stdClass();
-      self::$connections[$name]->type = $type;
+                self::$connections[$name] = new stdClass();
+                self::$connections[$name]->type = $type;
 
-      switch($type) {
-        case 'Dummy':
-          break;
-        case 'MySQL':
-          if($port) $host = sprintf('%s:%d', $host, $port);
-          self::$connections[$name]->handle = @mysql_connect($host, $username, $password);
-          break;
-        case 'MySQLi':
-          self::$connections[$name]->handle = @mysqli_connect($host, $username, $password, $database);
-          break;
-        case 'SQLite':
-          self::$connections[$name]->handle = @sqlite_open($database);
-          break;
-        case 'PostgreSQL':
-          # build a connection string
-          $pg_connect = array('dbname' => $database);
-          foreach(array('host', 'port', 'username', 'password') as $var) if($$var) $pg_connect[] = sprintf('%s=%s', $var = 'username'? 'user' : $var, $$var);
-          $pg_connect = implode(' ', $pg_connect);
-          self::$connections[$name]->handle = @pg_connect($pg_connect);
-          break;
-        case 'MSSQL':
-          if($port) $host = sprintf('%s,%s', $host, $port);
-          self::$connections[$name]->handle = @mssql_connect($host, $username, $password);
-          break;
-        default:
-          throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types', $type));
-      }
-      if(!self::$connections[$name]->handle) self::throwSqlException($name);
+                switch($type) {
+                        case 'Dummy':
+                                self::$connections[$name]->handle = 1;
+                                break;
+                        case 'MySQL':
+                                if ($port)
+                                        $host = sprintf('%s:%d', $host, $port);
 
-      # DB selection, if required
-      switch($type) {
-        case 'MySQL':
-          @mysql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
-          break;
-        case 'MSSQL':
-          @mssql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
-          break;
-      }
-    }
+                                self::$connections[$name]->handle = @mysql_connect($host, $username, $password);
+                                break;
+                        case 'MySQLi':
+                                self::$connections[$name]->handle = @mysqli_connect($host, $username, $password, $database);
+                                break;
+                        case 'SQLite':
+                                self::$connections[$name]->handle = @sqlite_open($database);
+                                break;
+                        case 'PostgreSQL':
+                                # build a connection string
+                                $pg_connect = array('dbname' => $database);
+                                foreach (array('host', 'port', 'username', 'password') as $var)
+                                        if ($$var)
+                                                $pg_connect[] = sprintf('%s=%s', $var = 'username'? 'user' : $var, $$var);
 
-    private static function getConn($name = null) {
-      self::checkName($name);
-      self::$connection = self::$connection? self::$connection : self::$default_name;
-      $name = $name? $name : self::$connection;
+                                $pg_connect = implode(' ', $pg_connect);
+                                self::$connections[$name]->handle = @pg_connect($pg_connect);
+                                break;
+                        case 'MSSQL':
+                                if ($port)
+                                        $host = sprintf('%s,%s', $host, $port);
 
-      if(!isset(self::$connections[$name])) throw new SSqlInputException(sprintf('The %s connection is not set', $name == self::$default_name? $name.' (DEFAULT)' : $name));
-      return self::$connections[$name];
-    }
+                                self::$connections[$name]->handle = @mssql_connect($host, $username, $password);
+                                break;
+                        default:
+                                throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types', $type));
+                }
 
-    public static function useName($name = null) {
-      self::checkName($name);
-      $name = $name? $name : self::$default_name;
-      if(!isset($name)) throw new SSqlInputException('You must specify a valid named connection');
-      self::$connection = $name;
-    }
+                if (!self::$connections[$name]->handle)
+                        self::throwSqlException($name);
 
-    public static function getHandle($name = null) {
-      return self::getConn($name)->handle;
-    }
+                # DB selection, if required
+                switch($type) {
+                        case 'MySQL':
+                                @mysql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
+                                break;
+                        case 'MSSQL':
+                                @mssql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
+                                break;
+                }
+        }
 
-    public static function getResource($name = null) {
-      return self::getConn($name)->resource;
-    }
+        private static function getConn($name = NULL)
+        {
+                self::name($name);
+                if ($name == self::default_name && !is_null(self::$connection)) # if we have a connection specified via useName()
+                        $name = self::$connection;
 
-    public static function getType($name = null) {
-      return self::getConn($name)->type;
-    }
+                if (!isset(self::$connections[$name]))
+                        throw new SSqlInputException(sprintf('The %s connection is not set', $name == self::default_name? $name.' (DEFAULT)' : $name));
 
-    public static function getInput($name = null) {
-      return self::getConn($name)->input;
-    }
+                return self::$connections[$name];
+        }
 
-    private static function putInput($input, $name = null) {
-      self::getConn($name)->input = $input;
-    }
+        public static function useName($name = NULL)
+        {
+                self::$connection = $name;
+        }
 
-    public static function getOutput($name = null) {
-      return self::getConn($name)->output;
-    }
+        public static function getHandle($name = NULL)
+        {
+                return self::getConn($name)->handle;
+        }
 
-    private static function putOutput($output, $name = null) {
-      self::getConn($name)->output = $output;
-    }
+        public static function getResource($name = NULL)
+        {
+                return self::getConn($name)->resource;
+        }
 
-    private static function printDebug($func, $str) {
-      if(self::$debug_all) printf("SSql::debug %s : %s\n", $func, $str);
-    }
+        public static function getType($name = NULL)
+        {
+                return self::getConn($name)->type;
+        }
 
-    private static function throwSqlException($name) {
-      $err = '';
+        public static function getInput($name = NULL)
+        {
+                return self::getConn($name)->input;
+        }
 
-      switch(self::getType($name)) {
-        case 'MySQL':
-          $err = sprintf('MySQL Error(%d): %s', mysql_errno(self::getResource()), mysql_error(self::getResource()));
-          break;
-        case 'MySQLi':
-          $err = sprintf('MySQLi Error(%d): %s', mysqli_errno(self::getHandle()), mysqli_error(self::getHandle()));
-          break;
-        case 'SQLite':
-          $err = sprintf('sqlite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
-          break;
-        case 'PostgreSQL':
-          $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResource($name)));
-          break;
-        case 'MSSQL':
-          $err = sprintf('MSSQL Error: %s', mssql_get_last_message()); # there doesn't appear to be any way to get the last message for a given resource of even handle
-        default:
-          throw new SSqlInputException('Method throwSqlException does not have behaviour specified for DB type '.self::getType($name));
-      }
+        private static function putInput($input, $name = NULL)
+        {
+                self::getConn($name)->input = $input;
+        }
 
-      throw new SSqlSqlException($err);
-    }
+        public static function getOutput($name = NULL)
+        {
+                return self::getConn($name)->output;
+        }
 
-    public static function query($query, $name = null) {
-      self::putInput($query, $name);
-      self::printDebug('query', $query);
-      $c = self::getConn($name);
-      switch(self::getType($name)) {
-        case 'Dummy':
-          printf('SSql Dummy Query: %s', $query);
-          break;
-        case 'MySQL':
-          $c->resource = @mysql_query(self::getHandle($name), $query);
-          break;
-        case 'MySQLi':
-          $c->resource = @mysqli_query(self::getHandle($name), $query);
-          break;
-        case 'SQLite':
-          $c->resource = @sqlite_query(self::getHandle($name), $query);
-          break;
-        case 'PostgreSQL':
-          pg_send_query(self::getHandle($name), $query);
-          $c->resource = pg_get_result(self::getHandle($name));
-          break;
-        case 'MSSQL':
-          $c->resource = @mssql_query($query, self::getHandle($name));
-          break;
-        default:
-          throw new SSqlInputException('Method query does not have behaviour specified for DB type '.self::getType($name));
-      }
-      if(!$c->resource) self::throwSqlException($name);
-      return $c->resource;
-    }
+        private static function putOutput($output, $name = NULL)
+        {
+                self::getConn($name)->output = $output;
+        }
 
-    public static function escape($var, $name = null) {
-      switch(self::getType($name)) {
-        case 'Dummy':
-          return $var;
-        case 'MySQL':
-          return mysql_real_escape_string("$var", self::getHandle($name));
-        case 'MySQLi':
-          return mysqli_real_escape_string(self::getHandle($name), "$var");
-        case 'SQLite':
-          return sqlite_escape_string("$var");
-        case 'PostgreSQL':
-          return pg_escape_string(self::getHandle($name), "$var");
-        case 'MSSQL':
-          return str_replace(array('\'', "\0"), array('\'\'', '[NULL]'), "$var"); # copied from a comment on php.net by vollmer@ampache.org
-        default:
-          throw new SSqlInputException('Method escape does not have behaviour specified for DB type '.self::getType($name));
-      }
-    }
+        private static function printDebug($func, $str)
+        {
+                if (self::$debug_all)
+                        printf("SSql::debug %s : %s\n", $func, $str);
+        }
 
-    public static function getInsertId($name = null) {
-      switch(self::getType($name)) {
-        case 'Dummy':
-          $id = 0;
-          break;
-        case 'MySQL':
-          $id = @mysql_insert_id(self::getResource($name));
-          break;
-        case 'MySQLi':
-          $id = @mysqli_insert_id(self::getHandle($name));
-          break;
-        case 'SQLite':
-          $id = @sqlite_last_insert_rowid(self::getHandle($name));
-          break;
-        case 'PostgreSQL':
-          $id = @pg_last_oid(self::getResource($name));
-          break;
-        case 'MSSQL':
-          $id = self::getVar('SELECT @@IDENTITY');  # there is no *_insert_id equivalent for MSSQL
-        default:
-          throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type '.self::getType($name));
-      }
-      if(is_null($id)) self::throwSqlException($name);
-      return $id;
-    }
+        private static function throwSqlException($name)
+        {
+                $err = '';
 
-    public static function getAffectedRows($name = null) {
-      switch(self::getType($name)) {
-        case 'Dummy':
-          $rows = 0;
-          break;
-        case 'MySQL':
-          $rows = @mysql_affected_rows(self::getResource($name));
-          break;
-        case 'MySQLi':
-          $rows = @mysqli_affected_rows(self::getHandle($name));
-          break;
-        case 'SQLite':
-          $rows = @sqlite_changes(self::getResource($name));
-          break;
-        case 'PostgreSQL':
-          $rows = @pg_affected_rows(self::getResource($name));
-          break;
-        case 'MSSQL':
-          $rows = @mssql_rows_affected(self::getResource($name));
-          break;
-        default:
-          throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type '.self::getType($name));
-      }
-      if(is_null($rows)) self::throwSqlException($name);
-      return $rows;
-    }
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $err = 'Dummy Error';
+                                break;
+                        case 'MySQL':
+                                $err = sprintf('MySQL Error(%d): %s', mysql_errno(self::getResource()), mysql_error(self::getResource()));
+                                break;
+                        case 'MySQLi':
+                                $err = sprintf('MySQLi Error(%d): %s', mysqli_errno(self::getHandle()), mysqli_error(self::getHandle()));
+                                break;
+                        case 'SQLite':
+                                $err = sprintf('sqlite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
+                                break;
+                        case 'PostgreSQL':
+                                $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResource($name)));
+                                break;
+                        case 'MSSQL':
+                                $err = sprintf('MSSQL Error: %s', mssql_get_last_message()); # there doesn't appear to be any way to get the last message for a given resource of even handle
+                        default:
+                                throw new SSqlInputException('Method throwSqlException does not have behaviour specified for DB type '.self::getType($name));
+                }
 
-    private static function checkName($name) {
-      if($name !== null && (!is_string($name) || preg_match('#[^a-zA-Z0-9_]#', $name))) throw new SSqlInputException('$name must be a string of alphanumerics and underscores, you passed '.$name);
-    }
+                throw new SSqlSqlException($err);
+        }
 
-    # get a single variable
-    public static function getVar($query, $name = null) {
-      $res = self::query($query, $name);
-      switch(self::getType($name)) {
-        case 'Dummy':
-          $var = 'Dummy';
-          break;
-        case 'MySQL':
-          $row = mysql_fetch_row($res);
-          $var = $row? reset($row) : null;
-          break;
-        case 'MySQLi':
-          $row = mysqli_fetch_row($res);
-          $var = $row? reset($row) : null;
-          break;
-        case 'SQLite':
-          $var = sqlite_fetch_single($res);
-          break;
-        case 'PostgreSQL':
-          $row = pg_fetch_row($res);
-          $var = $row? reset($row) : null;
-          break;
-        case 'MSSQL':
-          $row = mssql_fetch_row($res);
-          $var = $row? reset($row) : null;
-          break;
-        default:
-          throw new SSqlInputException('Method getVar does not have behaviour specified for DB type '.self::getType($name));
-      }
-      self::putOutput($var, $name);
-      return $var;
-    }
+        public static function query($query, $name = NULL)
+        {
+                self::putInput($query, $name);
+                self::printDebug('query', $query);
+                $c = self::getConn($name);
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $c->resource = 1;
+                                printf("################################################################################\n");
+                                # first sort out some prettier spacing of known SQL elements
+                                printf("SSql Dummy Query: \n        \n%s\n\n", preg_replace('#^#m', '    ', self::format($query)));
+                                break;
+                        case 'MySQL':
+                                $c->resource = @mysql_query(self::getHandle($name), $query);
+                                break;
+                        case 'MySQLi':
+                                $c->resource = @mysqli_query(self::getHandle($name), $query);
+                                break;
+                        case 'SQLite':
+                                $c->resource = @sqlite_query(self::getHandle($name), $query);
+                                break;
+                        case 'PostgreSQL':
+                                pg_send_query(self::getHandle($name), $query);
+                                $c->resource = pg_get_result(self::getHandle($name));
+                                break;
+                        case 'MSSQL':
+                                $c->resource = @mssql_query($query, self::getHandle($name));
+                                break;
+                        default:
+                                throw new SSqlInputException('Method query does not have behaviour specified for DB type '.self::getType($name));
+                }
+                if (!$c->resource)
+                        self::throwSqlException($name);
 
-    # get a single column, always returns an array
-    public static function getCol($query, $name = null) {
-      $res = self::query($query, $name);
-      $col = array();
-      switch(self::getType($name)) {
-        case 'Dummy':
-          break;
-        case 'MySQL':
-          while($row = mysql_fetch_row($res)) $col[] = reset($row);
-          break;
-        case 'MySQLi':
-          while($row = mysqli_fetch_row($res)) $col[] = reset($row);
-          break;
-        case 'SQLite':
-          if($column = sqlite_fetch_single($res)) $col = $column;
-          break;
-        case 'PostgreSQL':
-          if($column = pg_fetch_all_columns($res)) $col = $column;
-          break;
-        case 'MSSQL':
-          while($row = mssql_fetch_row($res)) $col[] = reset($row);
-          break;
-        default:
-          throw new SSqlInputException('Method getCol does not have behaviour specified for DB type '.self::getType($name));
-      }
-      self::putOutput($col, $name);
-      return $col;
-    }
+                return $c->resource;
+        }
 
-    # get a single row, always returns a stdClass object or null
-    public static function getRow($query, $name = null) {
-      $res = self::query($query, $name);
-      switch(self::getType($name)) {
-        case 'Dummy':
-          $o = new stdClass();
-          break;
-        case 'MySQL':
-          $o = mysql_fetch_object($res);
-          break;
-        case 'MySQLi':
-          $o = mysqli_fetch_object($res);
-          break;
-        case 'SQLite':
-          $o = sqlite_fetch_object($res);
-          break;
-        case 'PostgreSQL':
-          $o = pg_fetch_object($res);
-          break;
-        case 'MSSQL':
-          $o = mssql_fetch_object($res);
-          break;
-        default:
-          throw new SSqlInputException('Method getRow does not have behaviour specified for DB type '.self::getType($name));
-      }
-      $row = $o? $o : null;
-      self::putOutput($row, $name);
-      return $row;
-    }
+        public static function escape($var, $name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                return str_replace("'", "''", $var); # A very basic escape just for demo purposes
+                        case 'MySQL':
+                                return mysql_real_escape_string("$var", self::getHandle($name));
+                        case 'MySQLi':
+                                return mysqli_real_escape_string(self::getHandle($name), "$var");
+                        case 'SQLite':
+                                return sqlite_escape_string("$var");
+                        case 'PostgreSQL':
+                                return pg_escape_string(self::getHandle($name), "$var");
+                        case 'MSSQL':
+                                return str_replace(array('\'', "\0"), array('\'\'', '[NULL]'), "$var"); # copied from a comment on php.net by vollmer@ampache.org
+                        default:
+                                throw new SSqlInputException('Method escape does not have behaviour specified for DB type '.self::getType($name));
+                }
+        }
 
-    # get results, always returns an array of objects
-    public static function getResults($query, $name = null) {
-      $res = self::query($query, $name);
-      $array = array();
-      switch(self::getType($name)) {
-        case 'Dummy':
-          break;
-        case 'MySQL':
-          while($o = mysql_fetch_object($res)) $array[] = $o;
-          break;
-        case 'MySQLi':
-          while($o = mysqli_fetch_object($res)) $array[] = $o;
-          break;
-        case 'SQLite':
-          while($o = sqlite_fetch_object($res)) $array[] = $o;
-          break;
-        case 'PostgreSQL':
-          while($o = pg_fetch_object($res)) $array[] = $o;
-          break;
-        case 'MSSQL':
-          while($o = mssql_fetch_object($res)) $array[] = $o;
-          break;
-        default:
-          throw new SSqlInputException('Method getResults does not have behaviour specified for DB type '.self::getType($name));
-      }
-      self::putOutput($array, $name);
-      return $array;
-    }
+        public static function getInsertId($name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $id = 0;
+                                break;
+                        case 'MySQL':
+                                $id = @mysql_insert_id(self::getResource($name));
+                                break;
+                        case 'MySQLi':
+                                $id = @mysqli_insert_id(self::getHandle($name));
+                                break;
+                        case 'SQLite':
+                                $id = @sqlite_last_insert_rowid(self::getHandle($name));
+                                break;
+                        case 'PostgreSQL':
+                                $id = @pg_last_oid(self::getResource($name));
+                                break;
+                        case 'MSSQL':
+                                $id = self::getVar('SELECT @@IDENTITY');        # there is no *_insert_id equivalent for MSSQL
+                        default:
+                                throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type '.self::getType($name));
+                }
+                if (is_null($id))
+                        self::throwSqlException($name);
 
-    public static function timestamp($date_or_datetime) {
-      if(preg_match('#^(\d{4})-(\d{2})-(\d{2})$#', $date_or_datetime, $m)) {
-        return mktime(0, 0, 0, $m[2], $m[3], $m[1]);
-      }
-      elseif(preg_match('#^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$#', $date_or_datetime, $m)) {
-        return mktime($m[4], $m[5], $m[6], $m[2], $m[3], $m[1]);
-      }
-      else {
-        throw new SSqlInputException('Must pass either a date (YYYY-MM-DD) or datetime (YYYY-MM-DD HH:MM:SS)');
-      }
-    }
+                return $id;
+        }
 
-    # output debug information on the previous input/output
-    public static function debug($name = null) {
-      # use self::getInput($name) and self::getOuput($name)
-    }
-  }
+        public static function getAffectedRows($name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $rows = 0;
+                                break;
+                        case 'MySQL':
+                                $rows = @mysql_affected_rows(self::getResource($name));
+                                break;
+                        case 'MySQLi':
+                                $rows = @mysqli_affected_rows(self::getHandle($name));
+                                break;
+                        case 'SQLite':
+                                $rows = @sqlite_changes(self::getResource($name));
+                                break;
+                        case 'PostgreSQL':
+                                $rows = @pg_affected_rows(self::getResource($name));
+                                break;
+                        case 'MSSQL':
+                                $rows = @mssql_rows_affected(self::getResource($name));
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type '.self::getType($name));
+                }
+                if (is_null($rows))
+                        self::throwSqlException($name);
 
-  class SSqlInputException extends Exception {}
-  class SSqlSqlException extends Exception {}
+                return $rows;
+        }
+
+        private static function name(&$name)
+        {
+                if (!is_null($name) && (!is_string($name) || preg_match('#[^a-zA-Z0-9_]#', $name)))
+                        throw new SSqlInputException('$name must be a string of alphanumerics and underscores, you passed '.$name);
+
+                if (is_null($name))
+                        $name = self::default_name;
+        }
+
+        # get a single variable
+        public static function getVarFor($res, $name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $var = 'Dummy';
+                                break;
+                        case 'MySQL':
+                                $row = mysql_fetch_row($res);
+                                $var = $row? reset($row) : NULL;
+                                break;
+                        case 'MySQLi':
+                                $row = mysqli_fetch_row($res);
+                                $var = $row? reset($row) : NULL;
+                                break;
+                        case 'SQLite':
+                                $var = sqlite_fetch_single($res);
+                                break;
+                        case 'PostgreSQL':
+                                $row = pg_fetch_row($res);
+                                $var = $row? reset($row) : NULL;
+                                break;
+                        case 'MSSQL':
+                                $row = mssql_fetch_row($res);
+                                $var = $row? reset($row) : NULL;
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getVar does not have behaviour specified for DB type '.self::getType($name));
+                }
+                self::putOutput($var, $name);
+                return $var;
+        }
+
+        public static function getVar($query, $name = NULL)
+        {
+                return self::getVarFor(self::query($query, $name), $name);
+        }
+
+        # get a single column, always returns an array
+        public static function getColFor($res, $name = NULL)
+        {
+                $col = array();
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                break;
+                        case 'MySQL':
+                                while ($row = mysql_fetch_row($res))
+                                        $col[] = reset($row);
+                                break;
+                        case 'MySQLi':
+                                while ($row = mysqli_fetch_row($res))
+                                        $col[] = reset($row);
+                                break;
+                        case 'SQLite':
+                                if ($column = sqlite_fetch_single($res))
+                                        $col = $column;
+                                break;
+                        case 'PostgreSQL':
+                                if ($column = pg_fetch_all_columns($res))
+                                        $col = $column;
+                                break;
+                        case 'MSSQL':
+                                while ($row = mssql_fetch_row($res))
+                                        $col[] = reset($row);
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getCol does not have behaviour specified for DB type '.self::getType($name));
+                }
+                self::putOutput($col, $name);
+                return $col;
+        }
+
+        public static function getCol($query, $name = NULL)
+        {
+                return self::getColFor(self::query($query, $name), $name);
+        }
+
+        # get a single row, always returns a stdClass object or NULL
+        public static function getRowFor($res, $name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $o = new stdClass();
+                                break;
+                        case 'MySQL':
+                                $o = mysql_fetch_object($res);
+                                break;
+                        case 'MySQLi':
+                                $o = mysqli_fetch_object($res);
+                                break;
+                        case 'SQLite':
+                                $o = sqlite_fetch_object($res);
+                                break;
+                        case 'PostgreSQL':
+                                $o = pg_fetch_object($res);
+                                break;
+                        case 'MSSQL':
+                                $o = mssql_fetch_object($res);
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getRow does not have behaviour specified for DB type '.self::getType($name));
+                }
+                $row = $o? $o : NULL;
+                self::putOutput($row, $name);
+                return $row;
+        }
+
+        public static function getRow($query, $name = NULL)
+        {
+                return self::getRowFor(self::query($query, $name), $name);
+        }
+
+        # get results, always returns an array of objects
+        public static function getResultsFor($res, $name = NULL)
+        {
+                $array = array();
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                break;
+                        case 'MySQL':
+                                while ($o = mysql_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'MySQLi':
+                                while ($o = mysqli_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'SQLite':
+                                while ($o = sqlite_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'PostgreSQL':
+                                while ($o = pg_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'MSSQL':
+                                while ($o = mssql_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getResults does not have behaviour specified for DB type '.self::getType($name));
+                }
+                self::putOutput($array, $name);
+                return $array;
+        }
+
+        public static function getResults($query, $name = NULL)
+        {
+                return self::getResultsFor(self::query($query, $name), $name);
+        }
+
+        public static function timestamp($date_or_datetime)
+        {
+                if (preg_match('#^(\d{4})-(\d{2})-(\d{2})$#', $date_or_datetime, $m))
+                        return mktime(0, 0, 0, $m[2], $m[3], $m[1]);
+                elseif (preg_match('#^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$#', $date_or_datetime, $m))
+                        return mktime($m[4], $m[5], $m[6], $m[2], $m[3], $m[1]);
+                else
+                        throw new SSqlInputException('Must pass either a date (YYYY-MM-DD) or datetime (YYYY-MM-DD HH:MM:SS)');
+        }
+
+        # output debug information on the previous input/output
+        public static function debug($name = NULL)
+        {
+                # use self::getInput($name) and self::getOuput($name)
+        }
+
+        public static function validName($name = NULL)
+        {
+                self::name($name);
+                return isset(self::$connections[$name]);
+        }
+
+        public static function format($query) {
+                $out = explode("\n", preg_replace(array('#(^\s+|\s+$)#',
+                                                        '#\s+#m',
+                                                        '#, #',
+                                                        '#,#',
+                                                        '#^SELECT #',
+                                                        '#^UPDATE #',
+                                                        '#^DELETE #',
+                                                        '# AND #',
+                                                        '# OR #',
+                                                        '#\(SELECT #',
+                                                        '# FROM #',
+                                                        '# WHERE #',
+                                                        '# INTO #',
+                                                        '# VALUES #',
+                                                        '# ORDER BY #',
+                                                        '# GROUP BY #',
+                                                        '# INNER JOIN #',
+                                                        '# OUTER JOIN #',
+                                                        '# LEFT JOIN #',
+                                                        '# RIGHT JOIN #'),
+                                                  array('',
+                                                        ' ',
+                                                        ',',
+                                                        ",\n           ",
+                                                        "SELECT     ",
+                                                        "UPDATE     ",
+                                                        "DELETE     ",
+                                                        "\nAND        ",
+                                                        "\nOR         ",
+                                                        "\n(SELECT    ",
+                                                        "\nFROM       ",
+                                                        "\nWHERE      ",
+                                                        "\nINTO       ",
+                                                        "\nVALUES     ",
+                                                        "\nORDER BY   ",
+                                                        "\nGROUP BY   ",
+                                                        "\nINNER JOIN ",
+                                                        "\nOUTER JOIN ",
+                                                        "\nLEFT JOIN  ",
+                                                        "\nRIGHT JOIN "),
+                                                  $query));
+
+                # then figure out where maximum index for the operators might be
+                $oi = 0;
+                $ops = array('AS',
+                             '=',
+                             '<>',
+                             'IN',
+                             'NOT IN',
+                             'LIKE',
+                             'NOT LIKE',
+                             'IS NULL',
+                             'IS NOT NULL',
+                             'BETWEEN',
+                             'NOT BETWEEN',
+                             'EXISTS',
+                             'NOT EXISTS');
+                $oplen = 0;
+                foreach ($out as $line) {
+                        foreach ($ops as $op)
+                                if (is_int($pos = strpos($line, $op)) && $pos > $oi) {
+                                        $oi = $pos;
+                                        if (($len = strlen($op)) > $oplen)
+                                                $oplen = $len;
+                                }
+                }
+                # then pad out any As or = signs that need it in order to line up
+                $output = array();
+                foreach ($out as $line) {
+                        $opfound = false;
+                        foreach ($ops as $op)
+                                if (is_int($pos = strpos($line, $op)) && $pos < ($oi + ($oplen-strlen($op)))) {
+                                        $opfound = true;
+                                        $spaces = '';
+                                        for ($i = 0; $i < (($oi - $pos) + $oplen-strlen($op)); $i++) {
+                                                $spaces .= ' ';
+                                        }
+                                        $output[] = sprintf("%s", substr_replace($line, $spaces, $pos, 0));
+                                }
+
+                        if (!$opfound)
+                                $output[] = sprintf("%s", $line);
+                }
+
+                return implode("\n", $output);
+        }
+}
+
+class SSqlInputException extends Exception {}
+class SSqlSqlException extends Exception {}
 ?>
