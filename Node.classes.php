@@ -11,7 +11,7 @@
  *                seemed wise, and we have some child addition/removal to boot.
  *                Yay!
  *
- *         Help:  $html = new EntityNode('html');
+ *         Help:  $html = new Node('html');
  *                $head = $html->head();
  *                $body = $html->body();
  *                $empty_div = $body->div('');  # since '<div />' won't render
@@ -26,7 +26,7 @@
  *                  getContent()
  *                  setContent($content)
  *
- *                EntityNode::
+ *                Node::
  *                  __construct($name, $content, $inline, $preserve_content = false)
  *                  __toString()
  *                  __call()  -- calls create new child EntityNodes
@@ -43,13 +43,13 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.15
+ *      Version:  2.00
  *
- *         Date:  2008-05-19
+ *         Date:  2009-07-27
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
- * Copyright (c) 2007, Adam Piper
+ * Copyright (c) 2009, Adam Piper
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -76,202 +76,224 @@
  *
  ******************************************************************************/
 
-  abstract class Node {
-    public static $pre_indent = '';
-    public static $indent = '  ';
+class NodeException      extends Exception {}
+class NodeInputException extends NodeException {}
 
-    protected static function indent($size) {
-      $indent = '';
-      for($i = 0; $i < $size; $i++) $indent .= self::$indent;
-      return self::$pre_indent.$indent;
-    }
+abstract class NodeCommon
+{
+        const INLINED             = 1;
+        const UNTOUCHED           = 3;
 
-    public function __toString() {
-      return $this->render();
-    }
+        public static $indent     = 4;
+        public static $pre_indent = 0;
 
-    protected abstract function render($indent_val = 0, $inline_val = 0, $preserve_content = false);
-  }
+        abstract protected function renderLines($indent = 0, $options = 0);
 
-  class TextNode extends Node {
-    private $content = '';
-
-    public function __construct($content = '') {
-      $this->content = $content;
-    }
-
-    public function getContent() {
-      return $this->content;
-    }
-
-    public function setContent($content) {
-      $this->content = $content;
-    }
-
-    protected function render($indent_val = 0, $inline_val = 0, $preserve_content = false) {
-      if(preg_match('#^\s*$#', $this->content)) return $inline_val && strlen($this->content) > 0? ' ' : '';
-
-      # content
-      $return = '';
-      $indent = $inline_val || $preserve_content? '' : parent::indent($indent_val);
-      $last = ($size = sizeof($lines = explode("\n", $this->content))) - 1;
-
-      for($i = 0; $i < $size; $i++) {
-        $line = str_replace('  ', ' ', $lines[$i]);
-        if(!$inline_val) $line = preg_replace('#^\s*#', '', $line);
-        $return .= sprintf('%s%s', $indent, htmlspecialchars($line, ENT_QUOTES, 'UTF-8'));
-
-        # line ending...
-        if($i != $last) $return .= ($inline_val && !$preserve_content)? ' ' : "\n";
-      }
-
-      return $return;
-    }
-  }
-
-  class EntityNode extends Node implements Iterator {
-    private $tag = '';
-    private $children = array();
-    private $properties = array();
-    private $inline = false;
-    private $preserve_content = false;
-
-    #Iteration
-    public function rewind() {
-      reset($this->children);
-    }
-
-    public function current() {
-      return current($this->children);
-    }
-
-    public function key() {
-      return key($this->children);
-    }
-
-    public function next() {
-      return next($this->children);
-    }
-
-    public function valid() {
-      return $this->current() !== false;
-    }
-    #/Iteration
-
-    public function addChild(Node $n) {
-      $this->children[] = $n;
-      return $n;
-    }
-
-    public function removeChild(Node $n) {
-      $found = false;
-      foreach($this->children as $i => $child) {
-        if($n === $child) {
-          $found = true;
-          unset($this->children[$i]);
+        public function __toString()
+        {
+                return $this->renderLines();
         }
-      }
-      if(!$found) throw new NodeInputException('Child node not found');
-      return $n;
-    }
 
-    public function __construct($tag, $content = null, $inline = false, $preserve_content = false) {
-      $this->tag = $tag;
-      if($content !== null) $this->addChild(new TextNode($content));
-      if($inline) $this->inline = true;
-      if($preserve_content) $this->preserve_content = true;
-    }
+        protected static function getSpaces($indent)
+        {
+                return str_pad('', self::$indent*(self::$pre_indent + $indent));
+        }
+}
 
-    public function __get($property) {
-      if(!isset($this->properties[$property])) throw new NodeInputException('Property '.$property.' is not set.');
-      return $this->properties[$property];
-    }
+class Node extends NodeCommon
+{
+        private $children   = array();
+        private $properties = array();
+        private $options    = 0;
+        private $tag        = '';
 
-    public function __set($property, $value) {
-      $this->properties[$property] = $value;
-    }
+        public function __construct($tag, $content = NULL, $options = 0)
+        {
+                $this->tag = $tag;
+                if (!is_null($content))
+                        $this->children[] = new NodeText($content);
 
-    public function __isset($property) {
-      return isset($this->properties[$property]);
-    }
+                if ($options === TRUE)
+                        $options = parent::INLINED;
 
-    protected function render($indent_val = 0, $inline_val = 0, $preserve_content = false) {
-      $indent = parent::indent($indent_val);
-      # what's the inline setting?
-      if($inline_val || $this->inline) $inline_val++;
+                $this->options |= $options;
+                return $this;
+        }
 
-      $properties = array();
-      foreach($this->properties as $p => $v)
-        $properties[] = sprintf('%s="%s"', $p, htmlspecialchars($v, ENT_QUOTES, 'UTF-8'));
-      $properties = sizeof($properties) > 0? ' '.implode(' ', $properties) : '';
+        public function __call($tag, $args)
+        {
+                $content = isset($args[0])? $args[0] : NULL;
+                $options = isset($args[1])? $args[1] : 0;
 
-      if(sizeof($this->children) == 0) {
-        # self closing tag
-        return sprintf('%s<%s%s />%s', $inline_val? '' : $indent, $this->tag, $properties, $inline_val > 0? '' : "\n");
-      }
-      else {
-        $return = sprintf('%s<%s%s>%s', $inline_val > 1? '' : $indent, $this->tag, $properties, $inline_val? '' : "\n");
+                $class = __CLASS__;
+                $o = new $class($tag, $content, $options);
+                $this->children[] = $o;
+                return $o;
+        }
 
-        # children
-        foreach($this->children as $child)
-          $return .= $child->render($indent_val+1, $inline_val > 0? $inline_val+1 : 0, $this->preserve_content);
+        private function propertiesAsString()
+        {
+                $strs = array();
+                foreach ($this->properties as $key => $value)
+                        $strs[] = sprintf('%s = "%s"', htmlspecialchars($key, ENT_QUOTES, 'UTF-8'), htmlspecialchars($value, ENT_QUOTES, 'UTF-8'));
 
-        return $return.sprintf('%s</%s>%s', $inline_val? '' : $indent, $this->tag, $inline_val > 1? '' : "\n");
-      }
-    }
+                return implode(' ', $strs);
+        }
 
-    public function __call($tag, $args) {
-      # args: 0 => content, 1 => inline_val, 2 => preserve
-      if(!isset($args[0])) $args[0] = null;
-      if(!isset($args[1])) $args[1] = null;
-      if(!isset($args[2])) $args[2] = null;
-      $class = __CLASS__;
-      return $this->addChild(new $class($tag, $args[0], $args[1], $args[2]));
-    }
-  }
+        protected function renderLines($indent = 0, $options = 0)
+        {
+                $options |= $this->options;
+                $self_closing = (sizeof($this->children) == 0);
+                $text = '';
+                $spaces = parent::getSpaces($indent);
 
-  class NodeInputException extends Exception {};
+                $text .= $spaces;
 
-  /* Tests
-  $html = new EntityNode('html');
-  $head = $html->head('foo');
-  $head->bar = 'baz';
-  $head->title('foo', true);
-  $bah = $head->bah();
-  $bah->wah = 'fah';
+                $text .= sprintf('<%s', $this->tag);
 
-  $body = $html->body("foo    bar & <test>
-    baz waz
-    doo
-    dah");
+                if (sizeof($this->properties) > 0)
+                        $text .= sprintf(' %s', $this->propertiesAsString());
 
-  $form = $body->form();
-  $form->method = 'POST';
-  $form->action = '';
-  $input = $form->input();
-  $input->type = 'text';
-  $input->name = 'foo';
-  $submit = $form->input();
-  $submit->type = 'submit';
-  $submit->value = 'Go!';
+                if ($self_closing) {
+                        $text .= " />\n";
+                } else {
+                        $text .= '>';
+                        if (!($options & parent::INLINED))
+                                $text .= "\n";
 
-  $form->addChild(new TextNode('foo'));
+                        foreach ($this->children as $child)
+                                $text .= $child->renderLines($indent+1, $options);
 
-  $u = $body->u(null, true);
-  $b = $u->b('bold & underlined');
+                        if (!($options & parent::INLINED))
+                                $text .= $spaces;
 
-  #XmlNode::$indent = "\t";
-  echo $html;
+                        $text .= sprintf("</%s>\n", $this->tag);
+                }
 
-  $html->removeChild($body);
-  echo $html;
+                return $text;
+        }
 
-  foreach($form as $node) {
-    printf("%s\n", get_class($node));
-  }
+        public function __set($key, $value)
+        {
+                $this->properties[$key] = $value;
+        }
 
-  $e = new EntityNode('foo');
-  $e->bar(null, true)->baz('moo')->roo();
-  echo $e;
-  */
+        public function __get($property)
+        {
+                if (!isset($this->properties[$property]))
+                        throw new NodeInputException('Property '.$property.' is not set.');
+
+                return $this->properties[$property];
+        }
+
+        public function __isset($property)
+        {
+                return isset($this->properties[$property]);
+        }
+
+        #Iteration
+        public function rewind()
+        {
+                reset($this->children);
+        }
+
+        public function current()
+        {
+                return current($this->children);
+        }
+
+        public function key()
+        {
+                return key($this->children);
+        }
+
+        public function next()
+        {
+                return next($this->children);
+        }
+
+        public function valid()
+        {
+                return $this->current() !== false;
+        }
+        #/Iteration
+
+        public function addChild(NodeCommon $n)
+        {
+                $this->children[] = $n;
+                return $n;
+        }
+
+        public function removeChild(NodeCommon $n)
+        {
+                $found = false;
+                foreach ($this->children as $i => $child) {
+                        if ($n === $child) {
+                                $found = true;
+                                unset($this->children[$i]);
+                        }
+                }
+                if (!$found)
+                        throw new NodeInputException('Child node not found');
+
+                return $n;
+        }
+ 
+}
+
+class NodeText extends NodeCommon
+{
+        private $content = '';
+
+        public function __construct($content)
+        {
+                $this->content = $content;
+        }
+
+        protected function renderLines($indent = 0, $options = 0)
+        {
+                if ($options == parent::UNTOUCHED) {
+                        return $this->content;
+
+                } elseif ($options & parent::INLINED) {
+                        return htmlspecialchars($this->content, ENT_QUOTES, 'UTF-8');
+
+                } else {
+                        return sprintf("%s\n",
+                                       preg_replace(array('#(^\s+|\s+$)#m',
+                                                          '#[ \t\r]+#m',
+                                                          '#^#m'),
+                                                    array('',
+                                                          ' ',
+                                                          parent::getSpaces($indent)),
+                                                    htmlspecialchars($this->content, ENT_QUOTES, 'UTF-8')));
+                }
+        }
+
+        public function getContent()
+        {
+                return $this->content;
+        }
+
+        public function setContent($content)
+        {
+                $this->content = $content;
+        }
+}
+
+/*
+$html = new Node('html');
+$html->title('inlined', true);
+$body = $html->body();
+$body->pre('this text ought to
+be protected from
+                          </>   screwing around with', true)->class = 'foo';
+$body->br();
+$body->p('<foo>', true);
+$body->p('   <foo>
+bar
+                  baz');
+echo $html;
+*/
+
 ?>
