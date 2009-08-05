@@ -77,31 +77,22 @@
 #
 ##################
 
-# TODO: find all instances of OrmClass and refer them to Orm::class_name
-
 # TODO: move from array_shift() to array_pop() for performance; array_reverse() once is acceptable to facilitate this
 
 # TODO: implement Orm::load() and OrmClass->save()
 #                            possibly with getHeirarchy() or maybe just with getProperties() ? getHeirarchy is cheaper. put in OrmClass.
-
+#                            getHeirarchy may be cheaper but getProperties is used everywhere else. centralise code. use getProperties.
 
 # TODO: make sure that thrown exceptions in private methods of Orm and direct descendants are of type OrmException, not of OrmInputException, cos it's us doing things wrong.
 
 # TODO: create Orm::getClasses('Blog') style thingie to load up all blogs
-# TODO: OrmClass->getRelations('AuthoredBy') -- work out whether we have classes to represent the relations for that rule (blog -> author or author->blog -- prefer OTM i guess??) and grab that shit too
-# TODO: OrmClass and OrmRelationship need to know what Orm Name to use
+# TODO: OrmClass->getRelations('AuthoredBy') -- remember that at this level we only think about aliases in the chain. relation names are lower down the abstraction.
 
-# get rid of OrmClass->getId() -- superceded by Orm->getKeyValues('Blog') (should probably move this to OrmClass) ------- it's not superceded because "id" is special; can have many ids for a heirarchy of objects
-# TODO: need a variable in OrmClass and OrmRelationship tracking whether it's been loaded from the DB. suggest private Orm->fromDb = false, and accompanying accessors (might have to stick the vars in OrmClass/OrmRelationship though to make em private...)    ----- ALREADY THERE AS OrmClass->synced (needs re-implementing now that SQL has all changed)
+# TODO: get rid of OrmClass->getId() -- superceded by Orm->getKeyValues('Blog') (should probably move this to OrmClass) ------- it's not superceded because "id" is special; can have many ids for a heirarchy of objects
 
-# TODO: consider Author->newRelation('AuthoredBy') returning object: Class => Book, Relationship => AuthoredBy (if AuthoredBy is class)
-# TODO: write ->addRelation() passing in an object: Class => Book, Relationship => AuthoredBy (if AuthoredBy is a class)
+# TODO: tracking of classes and their relations for saving will likely require storage of an object (need to store "loaded_from_db" and "added_to" for each r/ship)
 
 # TODO: neaten up the classes, yo.
-
-# TODO: abstract class support in the class heirarchy (abstract class stuff ends up being part of the next concrete class)
-
-# 
 
 abstract class Orm
 {
@@ -116,6 +107,11 @@ abstract class Orm
         private static $sql_resource_cache = array();
 
         private static $schemas = array();
+
+        public final static function getNames()
+        {
+                return array_keys(self::$schemas);
+        }
 
         public final static function setup($schema, $ssql_name = NULL, $name = NULL)
         {
@@ -138,10 +134,10 @@ abstract class Orm
                 foreach (self::$schemas[$name]->rules as $rule) {
                         self::validClassName($rule->input);
                         self::validClassName($rule->output);
-                        self::validClassName($rule->alias);
+                        self::validClassName($rule->relationship);
 
 
-                        if ($rule->alias == self::relationship_inherits)
+                        if ($rule->relationship == self::relationship_inherits)
                                 throw new OrmInputException(sprintf('The relationship "%s" is reserved', self::relationship_inherits));
 
                         if (class_exists($rule->input)) {
@@ -158,15 +154,15 @@ abstract class Orm
                                 self::$schemas[$name]->classes[] = $rule->output;
                         }
 
-                        if (in_array($rule->alias, self::$schemas[$name]->relationships))
-                                throw new OrmInputException(sprintf('Relationships must be unique; "%s" is already registered', $rule->alias));
+                        if (in_array($rule->relationship, self::$schemas[$name]->relationships))
+                                throw new OrmInputException(sprintf('Relationships must be unique; "%s" is already registered', $rule->relationship));
 
-                        self::$schemas[$name]->relationships[] = $rule->alias;
-                        if (class_exists($rule->alias)) {
-                                if (!is_subclass_of($rule->alias, self::orm_class_relationship))
-                                        throw new OrmInputException(sprintf('The specified class %s exists but is not a subclass of OrmRelationship', $rule->alias));
+                        self::$schemas[$name]->relationships[] = $rule->relationship;
+                        if (class_exists($rule->relationship)) {
+                                if (!is_subclass_of($rule->relationship, self::orm_class_relationship))
+                                        throw new OrmInputException(sprintf('The specified class %s exists but is not a subclass of OrmRelationship', $rule->relationship));
 
-                                self::$schemas[$name]->irelationships[] = $rule->alias;
+                                self::$schemas[$name]->irelationships[] = $rule->relationship;
                         }
                 }
 
@@ -176,21 +172,21 @@ abstract class Orm
         }
 
         # returns true only if registered and instanciable
-        protected static function isClass($name, $class)
+        protected static function isRegisteredClass($name, $class)
         {
                 self::name($name);
                 return in_array($class, self::$schemas[$name]->classes);
         }
 
         # returns true only if registered and instanciable
-        protected static function isIRelationship($name, $relationship)
+        protected static function isRegisteredIRelationship($name, $relationship)
         {
                 self::name($name);
                 return in_array($relationship, self::$schemas[$name]->irelationships);
         }
 
         # returns true only if registered
-        protected static function isRelationship($name, $relationship)
+        protected static function isRegisteredRelationship($name, $relationship)
         {
                 self::name($name);
                 return in_array($relationship, self::$schemas[$name]->relationships);
@@ -240,13 +236,13 @@ abstract class Orm
         private final static function validClassName($name)
         {
                 # a-z, 0-9. Must start with a capitalised letter
-                return !preg_match('#[^A-Za-z0-9]|^[^A-Z]$#', $name);
+                return !preg_match('#[^A-Za-z0-9]|^[^A-Z]#', $name);
         }
 
         private final static function validPropertyName($name)
         {
                 # a-z, 0-9 and underscore. Must start with a letter. Cannot contain two underscores in a row
-                return !preg_match('#[^a-z0-9_]|^[^a-z]|[^a-z]|__$#', $name);
+                return !preg_match('#[^a-z0-9_]|^[^a-z]|__#', $name);
         }
 
         # not sure of the point of this one......
@@ -324,51 +320,6 @@ abstract class Orm
                 $properties = array();
 
                 $class_reflection = new ReflectionClass($class);
-                /*foreach ($class_reflection->getProperties() as $pr) {
-                        if ($pr->isStatic() || $pr->isPrivate())
-                                continue;
-
-                        $source_class  = $pr->getDeclaringClass()->getName();
-                        if (!$flat && $source_class != $class)
-                                continue;
-
-                        $property_name = $pr->getName();
-
-                        if ($property_name == self::auto_property_id)
-                                throw new OrmInputException(sprintf('Class "%s" may not contain the reserved property "%s"', $source_class, $property_name));
-
-                        self::testClassName($source_class);
-                        self::testPropertyName($property_name);
-
-                        $properties[] = $property_name;
-                }
-
-                # examine its lineage; any immediate abstract classes get their properties merged in
-                # TODO: refactor?
-                while (($class_reflection = $class_reflection->getParentClass())    && # get the parent
-                       $class_reflection->getName() != self::orm_class_class        && # check that we're not hitting the top
-                       $class_reflection->getName() != self::orm_class_relationship && # check that we're not hitting the top
-                       !$class_reflection->isInstantiable()) {                         # all abstract classes get their properties merged
-                        foreach ($class_reflection->getProperties() as $pr) {
-                                if ($pr->isStatic() || $pr->isPrivate())
-                                        continue;
-
-                                $source_class  = $pr->getDeclaringClass()->getName();
-                                if ($source_class != $class_reflection->getName())
-                                        continue;
-
-                                $property_name = $pr->getName();
-
-                                if ($property_name == self::auto_property_id)
-                                        throw new OrmInputException(sprintf('Class "%s" may not contain the reserved property "%s"', $source_class, $property_name));
-
-                                self::testClassName($source_class);
-                                self::testPropertyName($property_name);
-
-                                $properties[] = $property_name;
-                        }
-                }*/
-
                 do {
                         foreach ($class_reflection->getProperties() as $pr) {
                                 if ($pr->isStatic() || $pr->isPrivate())
@@ -390,7 +341,7 @@ abstract class Orm
 
                                 $properties[] = $property_name;
                         }
-                } while (($class_reflection = $class_reflection->getParentClass())    && # get the parent
+                } while (($class_reflection = $class_reflection->getParentClass())     && # get the parent
                           $class_reflection->getName() != self::orm_class_class        && # check that we're not hitting the top
                           $class_reflection->getName() != self::orm_class_relationship && # check that we're not hitting the top
                           !$class_reflection->isInstantiable());                          # all abstract classes get their properties merged
@@ -398,7 +349,7 @@ abstract class Orm
                 return $properties;
         }
 
-        protected static final function classToDbName($class_name)
+        public static final function classToDbName($class_name)
         {
                 if (!is_string($class_name))
                         throw new OrmInputException('Must pass a string');
@@ -417,7 +368,7 @@ abstract class Orm
                 return $sql_name; # 'BaseReport' -> 'base_report'
         }
 
-        protected static final function propertyToDbName($property_name)
+        public static final function propertyToDbName($property_name)
         {
                 if (!is_string($property_name))
                         throw new OrmInputException('Must pass a string');
@@ -428,12 +379,12 @@ abstract class Orm
                 return $property_name;
         }
 
-        protected function dbToClassName($db_name)
+        public static final function dbToClassName($db_name)
         {
                 return str_replace(' ', '', ucwords(str_replace('_', ' ', $db_name)));
         }
 
-        protected function dbToPropertyName($db_name) {
+        public static final function dbToPropertyName($db_name) {
                 return $db_name;
         }
 
@@ -459,13 +410,29 @@ abstract class Orm
 
         #################################### SQL Construction ###################
 
-        private static final function sqlVar($name, $var)
+        public static final function sqlVar($name, $var, $type = NULL)
         {
+                switch ($type) {
+                        case 'NULL':
+                                break;
+                        case 'string':
+                                $var = (string) $var;
+                                break;
+                        case 'int':
+                                $var = (int)    $var;
+                                break;
+                        case 'float':
+                                $var = (float)  $var;
+                                break;
+                        default:
+                                throw new OrmInputException(sprintf('Unrecognised type requiredment: %s. Valid options are: NULL, string, int, float.', $type));
+                }
+
                 if (is_string ($var))               return (string) sprintf("'%s'", SSql::escape($var, self::getSSqlName($name)));
                 if (is_int($var) || is_float($var)) return (string) SSql::escape($var, self::getSSqlName($name));
                 if (is_null   ($var))               return (string) 'NULL';
 
-                throw new OrmInputException('Cannot insert variables of type '.$type.' into the database');
+                throw new OrmInputException(sprintf('Cannot insert variables of type %s into the database', gettype($var)));
         }
 
         private static final function parseRules($code)
@@ -473,14 +440,14 @@ abstract class Orm
                 # parse mappings I to O as A
                 $rules = array();
                 foreach (explode("\n", $code) as $line) {
-                        if (!preg_match('#^(?<input>\w+)\s+to\s+(?<output>\w+)\s+as\s+(?<alias>\w+)(\s+(?<options>.+))?$#', $line, $match))
+                        if (!preg_match('#^(?<input>\w+)\s+to\s+(?<output>\w+)\s+as\s+(?<relationship>\w+)(\s+(?<options>.+))?$#', $line, $match))
                                 continue;
 
                         $rule = new stdClass();
 
                         $rule->input   = $match['input' ];
                         $rule->output  = $match['output'];
-                        $rule->alias   = $match['alias' ];
+                        $rule->relationship   = $match['relationship' ];
                         if (!isset($match['options']))
                                 $rule->options = array();
                         else
@@ -494,8 +461,8 @@ abstract class Orm
 
         private static final function isMatch($rule, $spec)
         {
-                if (!is_object($rule) || !isset($rule->input) || !isset($rule->output) || !isset($rule->alias))
-                        throw new OrmException('Rule must be an object with properties input, output, alias all set');
+                if (!is_object($rule) || !isset($rule->input) || !isset($rule->output) || !isset($rule->relationship))
+                        throw new OrmException('Rule must be an object with properties input, output, relationship all set');
 
                 if (is_string($spec))
                         return $spec == $rule->input || $spec == $rule->output;
@@ -515,7 +482,7 @@ abstract class Orm
                 if (isset($spec->output) && $spec->output != $rule->output)
                         return false;
 
-                if (isset($spec->alias) && $spec->alias != $rule->alias)
+                if (isset($spec->alias) && $spec->alias != $rule->relationship)
                         return false;
 
                 return true;
@@ -584,80 +551,6 @@ abstract class Orm
 
                 return NULL;
         }
-        /*
-        # find a route from class A to class B
-        # note that this function has some advanced functionality in the rule_matches variable; it is possible to set "waypoints"
-        #         either as a string (in which case they match to either input or output rules) or as an object where any or all
-        #         of input, output, alias may be stipulated
-        private static final function routeRecurse($input_spec, $output_spec, $name = NULL, $waypoint_specs = array(), &$paths = array(), $path = array())
-        {
-                # if the path is empty, we should begin with rules that specify our input class in their ->input or ->output
-                if (sizeof($path) == 0) {
-                        foreach (self::getRules($name) as $rule) {
-                                $enter_inherits = (object) array('alias' => self::relationship_inherits,
-                                                                 'input' => $rule->input);
-                                if (self::isMatch($rule, $input_spec) && ($rule->alias != self::relationship_inherits || self::isMatch($rule, $enter_inherits)))
-                                        self::routeRecurse($input_spec, $output_spec, $name, &$waypoint_specs, $paths, array($rule));
-                        }
-
-                        # we have our valid paths by this point
-
-                        # if no valid paths are found return NULL
-                        if (sizeof($paths) == 0)
-                                return NULL;
-
-                        # sort paths by size and return the shortest
-                        usort($paths, array('self', 'sizeCompare'));
-                        return array_pop($paths);
-                }
-
-                # else we're on course; examine the final entry on our path as test
-                $test = $path[sizeof($path)-1];
-
-                $enter_inherits = (object) array('alias'  => self::relationship_inherits,
-                                                 'input'  => $test->input);
-                $leave_inherits = (object) array('alias'  => self::relationship_inherits,
-                                                 'output' => $test->input);
-
-                # if $test matches our $output_spec, iterate over the waypoint_specs to make sure we matched everything
-                if (self::isMatch($test, $output_spec) &&
-                    ($test->alias != self::relationship_inherits || self::isMatch($test, $leave_inherits))) { # if we want to finish on an "inherits" rule it must be the correct direction
-                        foreach ($waypoint_specs as $spec) {
-                                $match = true; # empty rules must match
-                                if (is_array($spec))
-                                        $spec = (object) $spec;
-
-                                foreach ($path as $rule) {
-                                        $match = self::isMatch($rule, $spec);
-
-                                        if ($match)
-                                                break;
-                                }
-
-                                if (!$match) # a required match was not found
-                                        return NULL;
-                        }
-
-                        # by this point we have a valid path that matches all requirements
-                        $paths[] = $path;
-
-                        return NULL;
-                }
-
-                # else find another rule whose ->input or ->output matches test->input or ->output and does not already exist in our path, and recurse
-                foreach (self::getRules($name) as $rule) {
-                        if (($test->input  == $rule->input   ||
-                             $test->input  == $rule->output  ||
-                             $test->output == $rule->input   ||
-                             $test->output == $rule->output) &&
-                             !in_array($rule, $path)         &&
-                             ($rule->alias != self::relationship_inherits || self::isMatch($rule, $enter_inherits)) && # in order to enter an inherits rule we must be travelling in the correct direction
-                             ($test->alias != self::relationship_inherits || self::isMatch($test, $leave_inherits)))   # similarly in order to leave an inherits rule, a directional check must be made
-                                self::routeRecurse($input_spec, $output_spec, $name, &$waypoint_specs, $paths, array_merge($path, array($rule)));
-                }
-
-                return NULL;
-        }*/
 
         private static final function sizeCompare(&$a, &$b)
         {
@@ -700,33 +593,6 @@ abstract class Orm
                                 self::comboRecurse($items, $combos, array_merge($used, array($item)));
         }
 
-        /*
-        # mixes up the different input/output destinations and tries to find the best route across the database
-        # does not concern itself with which final input/output are decided upon....
-        private static final function getRoute(array $destinations, array $stipulations, $name = NULL)
-        {
-                if (sizeof($destinations = array_unique($destinations, SORT_REGULAR)) < 2)
-                        throw new OrmException('Cannot calculate routes where we don\'t have at least 2 "destinations"');
-
-                # get all possible combinations of routes around destinations
-                self::comboRecurse($destinations,  $combos);
-
-                # calculate routes, select the shortest full route
-                $routes = array();
-                foreach ($combos as $i => $combo) {
-                        # we're going from point A to point B
-                        $a = array_shift($combo); # first item is "A"
-                        $b = array_pop($combo); # last item is "B"
-
-                        if ($route = self::routeRecurse($a, $b, $name, array_merge($combo, $stipulations)))
-                                $routes[$i] = $route;
-                }
-
-                usort($routes, array('self', 'sizeCompare'));
-
-                return array_pop($routes);
-        }*/
-
         private static final function anchorInput(array &$combo, $key, array $input) {
                 $combo = array_merge($input, $combo);
         }
@@ -756,8 +622,8 @@ abstract class Orm
 
         private static final function rshipRespecify(&$class, $dummy, $name) # TODO: figure out why I need the dummy variable here
         {
-                if (self::isIRelationship($name, $class))
-                        $class = (object) array('alias' => $class);
+                if (self::isRegisteredIRelationship($name, $class))
+                        $class = (object) array('relationship' => $class);
         }
 
         private static final function rshipRespecifyArray(&$array, $dummy, $name) # TODO: figure out why I need the dummy variable here
@@ -774,7 +640,7 @@ abstract class Orm
         #         stipulations: add route stipulations with respect to the schema rules; strings are matched against
         #                       input/output classes, objects/arrays are matched against an or all of input/output/alias
         #
-        protected static final function getSqlComponents($name, array $destinations, $waypoints = array())
+        protected static final function generateSqlComponents($name, array $destinations, $waypoints = array())
         {
                 # now we need to cater for the situation where only one table is being selected from
                 $dest_count = sizeof($destinations);
@@ -795,7 +661,7 @@ abstract class Orm
                                             'lookup' => isset($dest->input)? $dest->input : false,
                                             'get_vars' => isset($dest->output)? $dest->output : false);
 
-                        if (self::isClass($name, $dest->class) && isset($dest->alias) && $dest->alias != self::anchor_alias)
+                        if (self::isRegisteredClass($name, $dest->class) && isset($dest->alias) && $dest->alias != self::anchor_alias)
                                 $waypoints[] = (object) array('alias' => $dest->alias); # these are infered waypoints
                 }
 
@@ -805,9 +671,9 @@ abstract class Orm
 
                 if ($dest_count == 1) {
                         # create a fake route for SQL generation consisting of a single rule (with a hackish invalid alias name)
-                        $route = array((object) array('input'  => $head->class,
-                                                      'output' => $head->class,
-                                                      'alias'  => self::anchor_alias));
+                        $route = array((object) array('input'         => $head->class,
+                                                      'output'        => $head->class,
+                                                      'relationship'  => self::anchor_alias));
 
                 } else {
                         # generate list of destination classes
@@ -843,9 +709,9 @@ abstract class Orm
 
                 # by this point we have a valid route, started off with a dummy rule that has an alias of "0"
 
-                $last_rule = (object) array('input'  => NULL,
-                                            'output' => $head->class,
-                                            'alias'  => self::anchor_alias);
+                $last_rule = (object) array('input'         => NULL,
+                                            'output'        => $head->class,
+                                            'relationship'  => self::anchor_alias);
 
                 # prepare the Hinges and Nodes arrays
                 $inputs = $outputs = array($last_rule->output);
@@ -874,7 +740,7 @@ abstract class Orm
 
                         if (isset($dest->input))
                                 foreach ($dest->input as $key => $val)
-                                        if (self::isClass($name, $dest->class) && !in_array($key, self::getKeys($dest->class)))
+                                        if (self::isRegisteredClass($name, $dest->class) && !in_array($key, self::getKeys($dest->class)))
                                                 $non_key_inputs[] = $o;
 
                         if (isset($dest->output))
@@ -915,9 +781,9 @@ abstract class Orm
                                 $linked_class = $rule->input;
                                 $link_stored_here = false;
                         }
-                        $result_of = $last_rule->alias;
+                        $result_of = $last_rule->relationship;
                         if (!is_null($rule))
-                                $link = $rule->alias;
+                                $link = $rule->relationship;
 
                         # variables for use in loop:
                         if ($link)
@@ -949,10 +815,10 @@ abstract class Orm
 
                         $result_of_sql   = $result_of == self::anchor_alias? $result_of : self::classToDbName($result_of);
                         $current_table   = self::classToDbName($current_class);
-                        $current_alias   = self::isClass($name, $current_class)? sprintf("%s__%s", $current_table, $result_of_sql) : $current_table;
+                        $current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $current_table, $result_of_sql) : $current_table;
                         $linked_table    = self::classToDbName($linked_class);
                         if ($link)
-                                $linked_alias    = self::isClass($name, $linked_class)? sprintf("%s__%s",  $linked_table,  $link_sql) : $linked_table;
+                                $linked_alias    = self::isRegisteredClass($name, $linked_class)? sprintf("%s__%s",  $linked_table,  $link_sql) : $linked_table;
                         # also: $current_class
                         #       $linked_class
                         #       $link_stored_here
@@ -980,12 +846,12 @@ abstract class Orm
                                                         if (!$class_reflection->isInstantiable())
                                                                 continue;
 
-                                                        if ($class != $current_class) {
+                                                        if ($class != $current_class) { # parent classes
                                                                 $last_alias_inherits = $alias;
                                                                 $table = self::classToDbName($class);
                                                                 $alias_name = self::classToDbName(self::relationship_inherits);
                                                                 $alias = sprintf('%s__%s__%s', $table, $alias_name, $current_alias);
-                                                                # TODO: need to add to FROM and join WHERE.... perhaps I should do it there?
+
                                                                 $from[] = sprintf("%s %s", $table, $alias);
                                                                 foreach (self::getKeys($class) as $key)
                                                                         $where[] = sprintf("%s.%s__key__%s = %s.%s", $last_alias_inherits, $alias_name, $key, $alias, $key);
@@ -1018,6 +884,7 @@ abstract class Orm
 
                                                         $key = self::propertyToDbName($key);
                                                         /*$var = self::sqlVar($name, $var);*/
+
                                                         if ($input_as_rel_keys)
                                                                 $table_key = sprintf("%s.%s__key__%s", $last_alias, $result_of, $key);
                                                         else
@@ -1046,7 +913,7 @@ abstract class Orm
 
                         if (!$curr_unused_node) {
                                 # FROM
-                                if (self::isClass($name, $current_class))
+                                if (self::isRegisteredClass($name, $current_class))
                                         $from[] = sprintf("%s %s", $current_table, $current_alias);
                                 else
                                         $from[] = $current_alias;
@@ -1062,7 +929,7 @@ abstract class Orm
                                         }
 
                                 } else {
-                                        $var_prefix = $curr_unused_node? sprintf("%s.%s__", $last_alias, $last_link_sql) : sprintf("%s.", $current_alias);# TODO: refactor so we only have one loop below
+                                        $var_prefix = $curr_unused_node? sprintf("%s.%s__", $last_alias, $last_link_sql) : sprintf("%s.", $current_alias);
                                         foreach (self::getKeys($current_class) as $key)
                                                 $where[] = sprintf("%s%s = %s.%s__key__%s", $var_prefix, $key, $linked_alias, $link_sql, $key);
                                 }
@@ -1087,167 +954,43 @@ abstract class Orm
         }
 
 
-
-
-        /*
-        # Constructs SQL from Class-based specifications of input/output
-        #
-        #         class_inputs: associative (keyed) array of the form class_name => key_value_object
-        #
-        #         outputs:      classes required for output
-        #
-        #         stipulations: add route stipulations with respect to the schema rules; strings are matched against
-        #                       input/output classes, objects/arrays are matched against an or all of input/output/alias
-        #
-        static final function getSqlComponents(array $class_inputs, array $outputs, $stipulations = array(), $name = NULL)
-        {
-                $select = array();
-                $from   = array();
-                $where  = array();
-
-                if (sizeof($outputs) < 1)
-                        throw new OrmInputException('Must provide at least one output class');
-
-                $inputs = array_keys($class_inputs);
-                $destinations = array_unique(array_merge($inputs,  $outputs), SORT_REGULAR);
-                # check that inputs/outputs are genuine Orm classes ($destinations) and that we have more than 0 outputs
-                foreach ($destinations as $class)
-                        if (!self::isClass($class, $name) && !self::isIRelationship($class, $name))
-                                throw new OrmInputException(sprintf('%s is not a registered class or relationship', $class));
-
-                if (sizeof($destinations) > 1) {
-                        # need to translate OrmRelationships into their corresponding input Classes
-                        $route_across = array();
-                        foreach ($destinations as $class) {
-                                $alias = '';
-                                if (self::isClass($class, $name)) {
-                                        $properties = self::getProperties($class);
-                                        $table = self::classToDbName($class);
-                                        $route_across[] = $class;
-                                } else if (self::isIRelationship($class, $name)) {
-                                        $properties = self::getProperties($class, true);
-                                        $alias = self::classToDbName($class);
-                                        # find the storage (input) table from the rules
-                                        foreach (self::getRules($name) as $rule)
-                                                if ($rule->alias == $class) {
-                                                        $table = self::classtoDbName($rule->input);
-                                                        $route_across[] = $rule->input;
-                                                }
-
-                                        if (strlen($table) == 0)
-                                                throw new OrmInputException(sprintf('No rule contains alias %s', $class));
-                                } else {
-                                        throw new OrmInputException(sprintf('The class %s is not a registered class or relationship. Please consult your schema.'));
-                                }
-
-                                if (strlen($alias) > 0)
-                                        $alias = sprintf("%s__", $alias);
-
-                                if (in_array($class, $outputs)) {
-                                        $from[] = $table;
-
-                                        foreach ($properties as $property) {
-                                                $var = self::propertyToDbName($property);
-                                                $select[] = sprintf('%s.%s%s AS %s__%s%s', $table, $alias, $var, $table, $alias, $var);
-                                        }
-                                }
-                                
-                                if (in_array($class, $inputs)) {
-                                        # $class_inputs[$class] gives us the inputs we want as an object or array
-                                        foreach ($class_inputs[$class] as $property => $value) {
-                                                $var = self::propertyToDbName($property);
-                                                $where[] = sprintf('%s.%s%s = %s', $table, $alias, $var, self::sqlVar($value, $name));
-                                        }
-                                }
-                        }
-                        if(!$route = self::getRoute($route_across, $stipulations, $name))
-                                throw new OrmInputException(sprintf('Could not find a valid route across %s', implode(', ', $route_across)));
-
-                        # when constructing the SQL look for classes that are referenced in two or more OUTPUT rules,
-                        # if these classes are not mentioned in the inputs or outputs then we can "hop" over them by matching the input keys on those rules
-                        $outs = array();
-                        $hops = array();
-                        foreach ($route as $rule) {
-                                if (in_array($rule->output, $outs) && !in_array($rule->output, array_merge($inputs, $outputs)))
-                                        $hops[$rule->output] = $rule;
-                                else
-                                        $outs[] = $rule->output;
-                        }
-                        unset($outs);
-                        $hop_outs = array_keys($hops);
-
-                        # need to work out from $route what other joins to make and from $hops what can be avoided
-                        # add joins to FROM and WHERE, if neccessary
-                        foreach ($route as $rule) {
-                                $a = self::classToDbName($rule->input);
-                                $b = self::classToDbName($rule->output);
-                                $x = self::classToDbName($rule->alias);
-
-                                # if the alias is Inherits, and the input is in our inputs, and the output is in our outputs... dummy!
-                                if ($rule->alias == self::relationship_inherits && (in_array($rule->input, $inputs) || in_array($rule->input, $outputs)) && in_array($rule->output, $outputs))
-                                        $select[] = sprintf("'dummy' AS %s__%s__%s", self::classToDbName($rule->input), self::classToDbName($rule->alias), self::classToDbName($rule->output));
-
-                                if (!in_array($table = self::classtoDbName($rule->input), $from)) {
-                                        $from[] = $table;
-
-                                        # now join the input to the output
-                                        foreach (self::getKeys($rule->output) as $key) {
-                                                $key = self::propertyToDbName($key);
-                                                array_unshift($where, sprintf("%s.%s__%s = %s.%s", $a, $x, $key, $b, $key));
-                                        }
-                                }
-                                if (!in_array($table = self::classtoDbName($rule->output), $from)) {
-                                        # see about hopping over it
-                                        if (in_array($rule->output, $hop_outs)) {
-                                                if ($rule->input != $hops[$rule->output]->input) {
-                                                        $c = self::classToDbName($hops[$rule->output]->input);
-                                                        $y = self::classToDbName($hops[$rule->output]->alias);
-
-                                                        # now join the inputs
-                                                        foreach (self::getKeys($rule->output) as $key) {
-                                                                $key = self::propertyToDbName($key);
-                                                                array_unshift($where, sprintf("%s.%s__%s = %s.%s__%s", $a, $x, $key, $c, $y, $key));
-                                                        }
-                                                }
-                                        } else {
-                                                $from[] = $table;
-
-                                                # now join the input to the output
-                                                foreach (self::getKeys($rule->output) as $key) {
-                                                        $key = self::propertyToDbName($key);
-                                                        $where[] = sprintf("%s.%s__%s = %s.%s", $a, $x, $key, $b, $key);
-                                                }
-                                        }
-                                }
-                        }
-
-                } else {
-                        # at this point we're only selecting out a single class
-                        $table = self::classToDbName($outputs[0]);
-                        foreach (self::getProperties($outputs[0]) as $property) {
-                                $var = self::propertyToDbName($property);
-                                $select[] = sprintf('%s.%s AS %s__%s', $table, $var, $table, $var);
-                        }
-                        $from[] = $table;
-                        
-                        foreach ($class_inputs[$outputs[0]] as $key => $value) {
-                                $var = self::propertyToDbName($key);
-                                $where[] = sprintf('%s.%s = %s', $table, $var, self::sqlVar($value, $name));
-                        }
-                }
-
-                $o = (object) array(
-                        'select' => implode(', ',    $select),
-                        'from'   => implode(', ',    $from  ),
-                );
-                if (sizeof($where) > 0)
-                        $o->where = implode(' AND ', $where );
-
-                return $o;
-        }*/
-
         # Takes input of various classes in/out and checks for a cached version of the SQL to avoid the auto routing process
-        public static final function getSql($destinations, $waypoints = array(), $name = NULL) {
+        /*
+the caching is in place to limit the number of times that pathfinding is done
+pathfinding results in components
+components are translated into SQL
+
+we are:
+        storing the SQL
+        unable to merge in further components
+        substituting the variables
+        executing the stored SQL
+
+we could:
+        store the components
+        merge in further components
+        convert the merged components into SQL
+        substitute the variables
+        execute the generated SQL
+        POSITIVES:
+                caching is working the way we want, and we can throw in some extra components
+        NEGATIVES:
+                one side-effect of the caching that i like is that the SQL is all nicely readable in the file;
+                if we end up serialising a component object then uh... that kinda sucks for readability
+                one thing to note here though is that this nicely readable stuff was just a side-effect
+                another thing to note is that we don't want people screwing with that SQL anyway
+
+
+
+notes:
+        merging and converting the components is pretty light on resources
+        should explore the order in which the components are put into SQL (as the SELECT should be first...)
+        perhaps SQL components should be a specified class (OrmSqlComponents) with known members in a specific order
+                this would allow refactoring so that merging and ordering are done in there
+        PLEASE PLEASE PLEASE remember that the variable arguments FOR THE "further components" MUST NOT be part of the hash, therefore they must be kept seperate
+ 
+        */
+        public static final function getSql($destinations, $waypoints, $name = NULL) {
                 $dests = $destinations;
                 $vals = array();
                 $func_args = array();
@@ -1277,7 +1020,7 @@ abstract class Orm
                         $sql = call_user_func_array(create_function($func_args, $func_body), $vals);
 
                 } else {
-                        $func_body = sprintf("return \"\n%s\";", SSql::format(self::getSqlFromComponents(self::getSqlComponents($name, $dests, $waypoints))));
+                        $func_body = sprintf("return \"\n%s\";", SSql::format(self::getSqlFromComponents(self::generateSqlComponents($name, $dests, $waypoints))));
 
                         # add to cache
                         if (class_exists(self::orm_class_sql_cache))
@@ -1289,10 +1032,27 @@ abstract class Orm
                 return $sql;
         }
 
+        # DEPRECATED: not currently used. should probably move to the currently non-existant OrmSqlComponents class
+        private static final function mergeComponents($a, $b)
+        {
+                $o = clone $a;
+                foreach ($b as $key => $val) {
+                        if (isset($a->$key))
+                                $o->$key = array_merge($a->$key, $val);
+                        else
+                                $o->$key = $val;
+                }
+
+                return $o;
+        }
+
         # Simple function to convert SQL components into an SQL statement
         protected static final function getSqlFromComponents($components)
         {
                 $sql = array();
+
+                if (!is_object($components))
+                        throw new OrmException('Variable $components must be an object');
 
                 foreach ($components as $command => $args)
                         $sql[] = sprintf("%s %s", strtoupper(str_replace('_', ' ', $command)), $args);
@@ -1302,6 +1062,7 @@ abstract class Orm
 
         # Takes SQL and checked for a cached resource to avoid re-running SQL
         protected static final function getSqlResource($name, $sql) {
+                $public_name = $name;
                 self::name($name);
 
                 $resource = NULL;
@@ -1319,12 +1080,12 @@ abstract class Orm
                 if (is_null($resource))
                         self::$sql_resource_cache[] = (object) array('name'     => $name,
                                                                      'hash'     => $hash,
-                                                                     'resource' => ($resource = SSql::query($sql, self::getSSqlName($name))));
+                                                                     'resource' => ($resource = SSql::query($sql, self::getSSqlName($public_name))));
 
                 return $resource;
         }
 
-        protected static final function classesFromResource($name, $resource, $class, $alias = NULL, $count = 0)
+        protected static final function classesFromResource($name, $resource, $class, $alias = NULL, $limit = 0)
         {
                 # person__0__firstname
                 # mtm_wishes__yearned_by__var__times,
@@ -1337,8 +1098,6 @@ abstract class Orm
 
 
                 # TODO: need to check that classes or relationships are instanciable
-                # TODO: how am i going to populate the objects? could use __set_state($assoc_arr) ?
-                # TODO: abstract away the cacheing
 
 
 
@@ -1350,6 +1109,9 @@ abstract class Orm
                                 switch (sizeof($parts = explode('__', $key))) {
                                         case 3: # class, result_of, property
                                                 list($r_class, $r_alias, $r_property) = $parts;
+                                                $r_class    = self::dbToClassName($r_class);
+                                                $r_alias    = self::dbToClassName($r_alias);
+                                                $r_property = self::dbToPropertyName($r_property);
 
                                                 if ($class == $r_class && (is_null($alias) || $alias == $r_alias))
                                                         $class_vars[$r_property] = $val;
@@ -1357,12 +1119,22 @@ abstract class Orm
 
                                         case 4: # relationship, result_of, "var", property
                                                 list($r_relationship, $r_alias, $var_e_var, $r_property) = $parts;
+                                                $r_relationship = self::dbToClassName($r_relationship);
+                                                $r_alias        = self::dbToClassName($r_alias);
+                                                $r_property     = self::dbToPropertyName($r_property);
+
                                                 if ($var_e_var != 'var')
                                                         throw new OrmException(sprintf('Not expecting key of form %s', $key));
                                                 break;
 
                                         case 5: # class, "inherits", parent, parent_result_of, property
                                                 list($r_class, $inherits_e_inherits, $r_parent, $r_parent_alias, $r_property) = $parts;
+                                                $r_class             = self::dbToClassName($r_class);
+                                                $inherits_e_inherits = self::dbToClassName($inherits_e_inherits);
+                                                $r_parent            = self::dbToClassName($r_parent);
+                                                $r_parent_alias      = self::dbToClassName($r_parent_alias);
+                                                $r_property          = self::dbToPropertyName($r_property);
+
                                                 if ($inherits_e_inherits != self::relationship_inherits)
                                                         throw new OrmException(sprintf('Not expecting key of form %s', $key));
 
@@ -1378,12 +1150,20 @@ abstract class Orm
 
                         $objects[] = new $class($class_vars, $name);
 
-                        if ($count > 0)
-                                if (sizeof($objects) == $count)
+                        if ($limit > 0)
+                                if (sizeof($objects) == $limit)
                                         break;
                 }
 
                 return $objects;
+        }
+
+        public static function load($class, $name = NULL)
+        {
+                $destinations = array(array('class' => $class, 'output' => true));
+                $sql          = self::getSql($destinations, array(), $name);
+                $resource     = self::getSqlResource($name, $sql);
+                return        self::classesFromResource($name, $resource, $class);
         }
 }
 
@@ -1426,8 +1206,10 @@ abstract class OrmClass extends Orm
                 # use this to work out whether an arg refers to an Orm name
                 $name_specified = 0;
 
-                if (is_array(func_get_arg(1))) { # array = new object with initial values
-                        $name_specified = 2;
+                if (is_array($input = func_get_arg(0))) { # array = new object with initial values
+                        if (func_num_args() == 2)
+                                $name_specified = 1;
+
                         foreach($input as $key => $val)
                                 $this->$key = $val;
 
@@ -1438,8 +1220,9 @@ abstract class OrmClass extends Orm
                         if (func_num_args() < (sizeof($keys) - 1))
                                 throw new OrmInputException('Not enough keys were passed in');
 
+                        $i = 0;
                         foreach($keys as $key)
-                                $this->$key = func_get_arg($i);
+                                $this->$key = func_get_arg($i++);
                 }
 
                 if ($name_specified > 0) {
@@ -1472,11 +1255,17 @@ abstract class OrmClass extends Orm
         public function save()
         {
                 # TODO
+                # we're not talking about relationships here; we're talking about aliases (but can check for many/one via relationship rules)
+                # keep a list of aliases requested (case by case?)
+                # when saving need to save those connections too. also need to make sure we don't lose data here. probably use an object to keep track of whether modifications have been made to its members.
+                # remember about saving the alias variables too ;) OrmRelationship->save() ?
+                # rest of saving should be fairly straightforward using Orm::getProperties()
         }
 
         public function delete()
         {
                 # TODO
+                # remember about supporting options for cacading deletes/updates; this stuff should be disableable via Orm::setup()
         }
 
         public final function getRelations($class) {
@@ -1492,32 +1281,65 @@ class OrmInputException       extends OrmException {}
 
 class OrmDbCreation extends Orm
 {
-        public static function getDbObjects($name)
+        public static function getDbObjects($name = null)
         {
                 $objs = array();
-                foreach (self::getRules($name) as $rule) {
-                        $o1 = (object) array('is_class'      => false,
-                                             'keys'          => array(),
-                                             'properties'    => array(),
-                                             'parent'        => NULL,
-                                             'relationships' => array());
-                        $o2 = clone $o1;
+                $o = (object) array('is_class'         => false,
+                                    'is_irelationship' => false,
+                                    'keys'             => array(),
+                                    'properties'       => array(),
+                                    'parent'           => NULL,
+                                    'relationships'    => array());
 
-                        if (!isset($objs[$rule->input]))
-                                $objs[$rule->input] = $o1;
+                foreach (self::getRules($name) as $rule) {
+                        foreach ($rule as $name => $class) {
+                                if (!is_string($class))
+                                        continue;
+
+                                if (!class_exists($class)) {
+                                        if (!isset($objs[$class]))
+                                                $objs[$class] = clone $o;
+
+                                        continue;
+                                }
+
+                                $class_reflection = new ReflectionClass($class);
+                                do {
+                                        if (!$class_reflection->isInstantiable())
+                                                continue;
+
+                                        if (!isset($objs[$class_reflection->getName()]))
+                                                $objs[$class_reflection->getName()] = clone $o;
+
+
+                                } while (($class_reflection = $class_reflection->getParentClass())    && # get the parent
+                                          $class_reflection->getName() != self::orm_class_class       && # check that we're not hitting the top
+                                          $class_reflection->getName() != self::orm_class_relationship); # check that we're not hitting the top
+                        }
 
                         $objs[$rule->input]->relationships[$rule->relationship] = $rule->output;
-                        $objs[$rule->output] = $o2;
                 }
 
                 foreach ($objs as $class => $o) {
-                        $o->is_class = self::isClass($name, $class);
-                        $o->keys = self::getKeys($class);
-                        $o->properties = self::getProperties($class, !$o->is_class);
-                        $o->parent = (($parent = get_parent_class($class)) == Orm::orm_class_class || $parent == Orm::orm_class_relationship)? NULL : $parent;
+                        if ($o->is_class = (class_exists($class) && is_subclass_of($class, parent::orm_class_class))) {
+                                $o->keys = self::getKeys($class);
+                                $o->properties = self::getProperties($class);
 
-                        if ($keys == array(Orm::auto_property_id))
-                                array_unshift($o->properties, Orm::auto_property_id);
+                                $class_reflection = new ReflectionClass($class);
+                                while (($class_reflection = $class_reflection->getParentClass()) && $class_reflection->getName() != parent::orm_class_class && $class_reflection->getName() != parent::orm_class_relationship) {
+                                        if (!$class_reflection->isInstantiable())
+                                                continue;
+
+                                        $o->parent = $class_reflection->getName();
+                                        break;
+                                }
+                        }
+
+                        if ($o->is_irelationship = (class_exists($class) && is_subclass_of($class, parent::orm_class_relationship)))
+                                $o->properties = self::getProperties($class, true);
+
+                        if ($o->keys == array(parent::auto_property_id))
+                                array_unshift($o->properties, parent::auto_property_id);
                 }
 
                 return $objs;
