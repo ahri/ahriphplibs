@@ -12,6 +12,8 @@
  *                Yay!
  *
  *         Help:  $html = new Node('html');
+ *                # or in PHP 5.3.0:
+ *                # $html = Node::html();
  *                $head = $html->head();
  *                $body = $html->body();
  *                $empty_div = $body->div('');  # since '<div />' won't render
@@ -20,32 +22,43 @@
  *                $head->title('Something Pertinent');
  *                echo $html;
  *
- *      Methods:  TextNode::
- *                  __construct($content, $inline = false, $preserve_content = false)
- *                  __toString()
- *                  getContent()
- *                  setContent($content)
+ *      Methods:  TextNode
+ *                  ->__construct($content)
+ *                  ->__toString()
+ *                  ->getContent()
+ *                  ->setContent($content)
  *
- *                Node::
- *                  __construct($name, $content, $inline, $preserve_content = false)
- *                  __toString()
- *                  __call()  -- calls create new child EntityNodes
- *                  __set()   -- vars are converted to properties
- *                  __get()
- *                  addChild(Node $node)
- *                  removeChild(Node $node)
+ *                Node options:
+ *                  INLINED    -- do not add linebreaks
+ *                  UNINDENTED -- do not indent
+ *                  UNSTRIPPED -- do not strip whitespace
+ *                  UNESCAPED  -- do not escape HTML characters
+ *                Aggregate Options:
+ *                  UNMANGLED: INLINED, UNSTRIPPED
+ *                  UNTOUCHED: INLINED, UNSTRIPPED, UNESCAPED
+ *
+ *                Node
+ *                  ->__construct($name, $content = NULL, $options = 0)
+ *                  ->__toString()
+ *                  ->__call()       -- calls create new child EntityNodes
+ *                  ::__callStatic() -- facilitates use of "Node::html()" instead of "new Node('html')", only in PHP 5.3.0+
+ *                  ->__set()        -- vars are converted to properties
+ *                  ->__get()
+ *                  ->addChild(Node $node)
+ *                  ->addText($text)
+ *                  ->removeChild(Node $node)
  *
  *                  (note that objects of this class are iterable with foreach,
  *                  but that use of ->removeChild() while looping isn't advised)
  *                
  *
- * Requirements:  PHP 5.2.0+
+ * Requirements:  PHP 5.2.0+, ideally 5.3.0+
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  2.00
+ *      Version:  2.02
  *
- *         Date:  2009-07-27
+ *         Date:  2009-07-31
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -81,8 +94,15 @@ class NodeInputException extends NodeException {}
 
 abstract class NodeCommon
 {
-        const INLINED             = 1;
-        const UNTOUCHED           = 3;
+        # options
+        const INLINED             =  1;
+        const UNINDENTED          =  2;
+        const UNSTRIPPED          =  4;
+        const UNESCAPED           =  8;
+
+        # aggregate options
+        const UNMANGLED           =  7;
+        const UNTOUCHED           = 15;
 
         public static $indent     = 4;
         public static $pre_indent = 0;
@@ -100,7 +120,7 @@ abstract class NodeCommon
         }
 }
 
-class Node extends NodeCommon
+class Node extends NodeCommon implements Iterator
 {
         private $children   = array();
         private $properties = array();
@@ -120,13 +140,19 @@ class Node extends NodeCommon
                 return $this;
         }
 
-        public function __call($tag, $args)
+        public static function __callStatic($tag, $args) # added support for PHP 5.3.0's callStatic
         {
                 $content = isset($args[0])? $args[0] : NULL;
                 $options = isset($args[1])? $args[1] : 0;
 
                 $class = __CLASS__;
                 $o = new $class($tag, $content, $options);
+                return $o;
+        }
+
+        public function __call($tag, $args)
+        {
+                $o = self::__callStatic($tag, $args);
                 $this->children[] = $o;
                 return $o;
         }
@@ -218,6 +244,11 @@ class Node extends NodeCommon
         }
         #/Iteration
 
+        public function addText($text)
+        {
+                $this->addChild(new NodeText($text));
+        }
+
         public function addChild(NodeCommon $n)
         {
                 $this->children[] = $n;
@@ -252,22 +283,43 @@ class NodeText extends NodeCommon
 
         protected function renderLines($indent = 0, $options = 0)
         {
-                if ($options == parent::UNTOUCHED) {
-                        return $this->content;
+                $content = $this->content;
 
-                } elseif ($options & parent::INLINED) {
-                        return htmlspecialchars($this->content, ENT_QUOTES, 'UTF-8');
-
-                } else {
-                        return sprintf("%s\n",
-                                       preg_replace(array('#(^\s+|\s+$)#m',
-                                                          '#[ \t\r]+#m',
-                                                          '#^#m'),
-                                                    array('',
-                                                          ' ',
-                                                          parent::getSpaces($indent)),
-                                                    htmlspecialchars($this->content, ENT_QUOTES, 'UTF-8')));
+                if (!($options & parent::UNSTRIPPED)) {
+                        $content = preg_replace(array('#(^\s+|\s+$)#m',
+                                                      '#[ \t\r]+#m'),
+                                                array('',
+                                                      ' '),
+                                                $content);
                 }
+
+                if (!($options & parent::UNINDENTED)) {
+                        if (!($options & parent::INLINED)) {
+                                $content = preg_replace('#^#m',
+                                                        parent::getSpaces($indent),
+                                                        $content);
+                        } else {
+                                $arr = explode("\n", $content);
+                                $content = $arr[0];
+                                $tail = array_slice($arr, 1);
+                                if (sizeof($tail) > 0) {
+                                        $content .= "\n";
+                                        $content .= preg_replace('#^#m',
+                                                                 parent::getSpaces($indent),
+                                                                 implode("\n", $tail));
+                                }
+                        }
+                }
+
+                if (!($options & parent::INLINED)) {
+                        $content = sprintf("%s\n", $content);
+                }
+
+                if (!($options & parent::UNESCAPED)) {
+                        $content =  htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
+                }
+
+                return $content;
         }
 
         public function getContent()
