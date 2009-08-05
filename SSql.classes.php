@@ -3,7 +3,7 @@
  *
  *         Name:  SSql - Transparent Singleton SQL Layer
  *
- *    Supported:  Dummy, MySQL, MySQLi, SQLite, PostgreSQL, MSSQL
+ *    Supported:  Dummy, MySQL, MySQLi, SQLite, SQLite3, PostgreSQL, MSSQL
  *         Note:  !!!!! NEEDS TESTING ON ALL PLATFORMS !!!!!
  *
  *  Description:  I wanted an easy-to-use static DB connector I could tweak to
@@ -21,8 +21,8 @@
  *
  * Requirements:  PHP 5.2.0+
  *
- *      Methods:  connect         (type, database[, host, username, password,
- *                                                           name, debug_all])
+ *      Methods:  connect         (type, database[, host, port, username,
+ *                                 password, name, debug_all])
  *                string    escape          (var  [, name])
  *                string    getVar          (query[, name])
  *                string[]  getCol          (query[, name])
@@ -51,7 +51,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.22
+ *      Version:  1.23
  *
  *         Date:  2009-07-14
  *
@@ -97,6 +97,7 @@ class SSql
 
         public static function connect($type, $database, $host = NULL, $port = NULL, $username = NULL, $password = NULL, $name = NULL, $debug_all = false)
         {
+                $public_name = $name;
                 self::$debug_all = $debug_all;
                 self::name($name);
 
@@ -111,14 +112,16 @@ class SSql
                                 if ($port)
                                         $host = sprintf('%s:%d', $host, $port);
 
-                                self::$connections[$name]->handle = @mysql_connect($host, $username, $password);
+                                self::$connections[$name]->handle = mysql_connect($host, $username, $password);
                                 break;
                         case 'MySQLi':
-                                self::$connections[$name]->handle = @mysqli_connect($host, $username, $password, $database);
+                                self::$connections[$name]->handle = mysqli_connect($host, $username, $password, $database);
                                 break;
                         case 'SQLite':
-                                self::$connections[$name]->handle = @sqlite_open($database);
+                                self::$connections[$name]->handle = sqlite_open($database);
                                 break;
+                        case 'SQLite3':
+                                self::$connections[$name]->handle = new SQLite3($database);
                         case 'PostgreSQL':
                                 # build a connection string
                                 $pg_connect = array('dbname' => $database);
@@ -127,28 +130,28 @@ class SSql
                                                 $pg_connect[] = sprintf('%s=%s', $var = 'username'? 'user' : $var, $$var);
 
                                 $pg_connect = implode(' ', $pg_connect);
-                                self::$connections[$name]->handle = @pg_connect($pg_connect);
+                                self::$connections[$name]->handle = pg_connect($pg_connect);
                                 break;
                         case 'MSSQL':
                                 if ($port)
                                         $host = sprintf('%s,%s', $host, $port);
 
-                                self::$connections[$name]->handle = @mssql_connect($host, $username, $password);
+                                self::$connections[$name]->handle = mssql_connect($host, $username, $password);
                                 break;
                         default:
                                 throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types', $type));
                 }
 
                 if (!self::$connections[$name]->handle)
-                        self::throwSqlException($name);
+                        throw new SSqlException('Connection failed');
 
                 # DB selection, if required
                 switch($type) {
                         case 'MySQL':
-                                @mysql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
+                                @mysql_select_db($database, self::getHandle($public_name)) || self::throwSqlException($public_name);
                                 break;
                         case 'MSSQL':
-                                @mssql_select_db($database, self::getHandle($name)) || self::throwSqlException($name);
+                                @mssql_select_db($database, self::getHandle($public_name)) || self::throwSqlException($public_name);
                                 break;
                 }
         }
@@ -220,13 +223,17 @@ class SSql
                                 $err = 'Dummy Error';
                                 break;
                         case 'MySQL':
-                                $err = sprintf('MySQL Error(%d): %s', mysql_errno(self::getResource()), mysql_error(self::getResource()));
+                                $err = sprintf('MySQL Error(%d): %s', mysql_errno(self::getHandle($name)), mysql_error(self::getHandle($name)));
                                 break;
                         case 'MySQLi':
-                                $err = sprintf('MySQLi Error(%d): %s', mysqli_errno(self::getHandle()), mysqli_error(self::getHandle()));
+                                $err = sprintf('MySQLi Error(%d): %s', mysqli_errno(self::getHandle($name)), mysqli_error(self::getHandle($name)));
                                 break;
                         case 'SQLite':
-                                $err = sprintf('sqlite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
+                                $err = sprintf('SQLite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
+                                break;
+                        case 'SQLite3':
+                                $o = self::getHandle($name);
+                                $err = sprintf('SQLite3 Error(%d): %s', $errcode = $o->lastErrorCode, $o->lastErrorMsg);
                                 break;
                         case 'PostgreSQL':
                                 $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResource($name)));
@@ -249,17 +256,20 @@ class SSql
                         case 'Dummy':
                                 $c->resource = 1;
                                 printf("################################################################################\n");
-                                # first sort out some prettier spacing of known SQL elements
                                 printf("SSql Dummy Query: \n        \n%s\n\n", preg_replace('#^#m', '    ', self::format($query)));
                                 break;
                         case 'MySQL':
-                                $c->resource = @mysql_query(self::getHandle($name), $query);
+                                $c->resource = mysql_query($query, self::getHandle($name));
                                 break;
                         case 'MySQLi':
                                 $c->resource = @mysqli_query(self::getHandle($name), $query);
                                 break;
                         case 'SQLite':
                                 $c->resource = @sqlite_query(self::getHandle($name), $query);
+                                break;
+                        case 'SQLite3':
+                                $o = self::getHandle($name);
+                                $c->resource = $o->query($query);
                                 break;
                         case 'PostgreSQL':
                                 pg_send_query(self::getHandle($name), $query);
@@ -288,6 +298,9 @@ class SSql
                                 return mysqli_real_escape_string(self::getHandle($name), "$var");
                         case 'SQLite':
                                 return sqlite_escape_string("$var");
+                        case 'SQLite3':
+                                $o = self::getHandle($name);
+                                return $o->escapeString("$var");
                         case 'PostgreSQL':
                                 return pg_escape_string(self::getHandle($name), "$var");
                         case 'MSSQL':
@@ -311,6 +324,10 @@ class SSql
                                 break;
                         case 'SQLite':
                                 $id = @sqlite_last_insert_rowid(self::getHandle($name));
+                                break;
+                        case 'SQLite3':
+                                $o = self::getHandle($name);
+                                $id = $o->lastInsertRowId();
                                 break;
                         case 'PostgreSQL':
                                 $id = @pg_last_oid(self::getResource($name));
@@ -340,6 +357,10 @@ class SSql
                                 break;
                         case 'SQLite':
                                 $rows = @sqlite_changes(self::getResource($name));
+                                break;
+                        case 'SQLite3':
+                                $o = self::getHandle($name);
+                                $rows = $o->changes();
                                 break;
                         case 'PostgreSQL':
                                 $rows = @pg_affected_rows(self::getResource($name));
@@ -383,6 +404,12 @@ class SSql
                         case 'SQLite':
                                 $var = sqlite_fetch_single($res);
                                 break;
+                        case 'SQLite3':
+                                $r = self::getResource($name);
+                                $row = $r->fetchArray();
+                                $r->finalize();
+                                $var = $row? reset($row) : NULL;
+                                break;
                         case 'PostgreSQL':
                                 $row = pg_fetch_row($res);
                                 $var = $row? reset($row) : NULL;
@@ -422,6 +449,12 @@ class SSql
                                 if ($column = sqlite_fetch_single($res))
                                         $col = $column;
                                 break;
+                        case 'SQLite3':
+                                $r = self::getResource($name);
+                                while ($row = $r->fetchArray())
+                                        $col[] = reset($row);
+                                $r->finalize();
+                                break;
                         case 'PostgreSQL':
                                 if ($column = pg_fetch_all_columns($res))
                                         $col = $column;
@@ -457,6 +490,11 @@ class SSql
                                 break;
                         case 'SQLite':
                                 $o = sqlite_fetch_object($res);
+                                break;
+                        case 'SQLite3':
+                                $r = self::getResource($name);
+                                $o = (object) $r->fetchArray(SQLITE3_ASSOC);
+                                $r->finalize();
                                 break;
                         case 'PostgreSQL':
                                 $o = pg_fetch_object($res);
@@ -494,6 +532,11 @@ class SSql
                                 break;
                         case 'SQLite':
                                 while ($o = sqlite_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'SQLite3':
+                                $r = self::getResource($name);
+                                while ($o = $r->fetchArray(SQLITE3_ASSOC))
                                         $array[] = $o;
                                 break;
                         case 'PostgreSQL':
@@ -539,6 +582,7 @@ class SSql
         }
 
         public static function format($query) {
+                # first sort out some prettier spacing of known SQL elements
                 $out = explode("\n", preg_replace(array('#(^\s+|\s+$)#',
                                                         '#\s+#m',
                                                         '#, #',
@@ -627,6 +671,8 @@ class SSql
         }
 }
 
-class SSqlInputException extends Exception {}
-class SSqlSqlException extends Exception {}
+class SSqlException      extends Exception {}
+class SSqlInputException extends SSqlException {}
+class SSqlSqlException   extends SSqlException {}
+
 ?>
