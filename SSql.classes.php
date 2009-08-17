@@ -28,32 +28,34 @@
  *                string[]  getCol          (query[, name])
  *                object    getRow          (query[, name])
  *                object[]  getResults      (query[, name])
- *                string    getVarFor       (resource[, name])
- *                string[]  getColFor       (resource[, name])
- *                object    getRowFor       (resource[, name])
- *                object[]  getResultsFor   (resource[, name])
+ *                string    getVarFor       (result[, name])
+ *                string[]  getColFor       (result[, name])
+ *                object    getRowFor       (result[, name])
+ *                object[]  getResultsFor   (result[, name])
  *                int       timestamp       (date_or_datetime)
  *
- *                resource  query           (query[, name])
+ *                result    query           (query[, name])
  *                int       getInsertId     ([name])
+ *                int       getNumRows      (result, [name])
  *                int       getAffectedRows ([name])
  *
  *                string    getInput        ([name])
  *                mixed     getOutput       ([name])
  *                resource  getHandle       ([name])
- *                resource  getResource     ([name])
+ *                result    getResult       ([name])
  *                string    getType         ([name])
  *
  *                void      useName         ([name])
  *                void      debug           ([name]) !!! NOT YET CODED !!!
  *                bool      validName       ([name])
  *                string    format          (query)
+ *                void      rewind          (result[, name])
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  1.23
+ *      Version:  0.1
  *
- *         Date:  2009-07-14
+ *         Date:  2009-08-10
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -115,7 +117,7 @@ class SSql
                                 self::$connections[$name]->handle = mysql_connect($host, $username, $password);
                                 break;
                         case 'MySQLi':
-                                self::$connections[$name]->handle = mysqli_connect($host, $username, $password, $database);
+                                self::$connections[$name]->handle = new MySQLi($host, $username, $password, $database, $port);
                                 break;
                         case 'SQLite':
                                 self::$connections[$name]->handle = sqlite_open($database);
@@ -139,7 +141,7 @@ class SSql
                                 self::$connections[$name]->handle = mssql_connect($host, $username, $password);
                                 break;
                         default:
-                                throw new SSqlInputException(sprintf('Type: %s is not in list of supported database types', $type));
+                                throw new SSqlInputException('Type: %s is not in list of supported database types', $type);
                 }
 
                 if (!self::$connections[$name]->handle)
@@ -163,7 +165,7 @@ class SSql
                         $name = self::$connection;
 
                 if (!isset(self::$connections[$name]))
-                        throw new SSqlInputException(sprintf('The %s connection is not set', $name == self::default_name? $name.' (DEFAULT)' : $name));
+                        throw new SSqlInputException('The %s connection is not set', $name == self::default_name? $name.' (DEFAULT)' : $name);
 
                 return self::$connections[$name];
         }
@@ -178,9 +180,9 @@ class SSql
                 return self::getConn($name)->handle;
         }
 
-        public static function getResource($name = NULL)
+        public static function getResult($name = NULL)
         {
-                return self::getConn($name)->resource;
+                return self::getConn($name)->result;
         }
 
         public static function getType($name = NULL)
@@ -226,22 +228,21 @@ class SSql
                                 $err = sprintf('MySQL Error(%d): %s', mysql_errno(self::getHandle($name)), mysql_error(self::getHandle($name)));
                                 break;
                         case 'MySQLi':
-                                $err = sprintf('MySQLi Error(%d): %s', mysqli_errno(self::getHandle($name)), mysqli_error(self::getHandle($name)));
+                                $err = sprintf('MySQLi Error(%d): %s', self::getHandle($name)->errno, self::getHandle($name)->error);
                                 break;
                         case 'SQLite':
                                 $err = sprintf('SQLite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
                                 break;
                         case 'SQLite3':
-                                $o = self::getHandle($name);
-                                $err = sprintf('SQLite3 Error(%d): %s', $errcode = $o->lastErrorCode, $o->lastErrorMsg);
+                                $err = sprintf('SQLite3 Error(%d): %s', self::getHandle($name)->ultrrorCode, self::getHandle($name)->lastErrorMsg);
                                 break;
                         case 'PostgreSQL':
-                                $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResource($name)));
+                                $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResult($name)));
                                 break;
                         case 'MSSQL':
-                                $err = sprintf('MSSQL Error: %s', mssql_get_last_message()); # there doesn't appear to be any way to get the last message for a given resource of even handle
+                                $err = sprintf('MSSQL Error: %s', mssql_get_last_message()); # there doesn't appear to be any way to get the last message for a given result of even handle
                         default:
-                                throw new SSqlInputException('Method throwSqlException does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method throwSqlException does not have behaviour specified for DB type %s', self::getType($name));
                 }
 
                 throw new SSqlSqlException($err);
@@ -254,37 +255,36 @@ class SSql
                 $c = self::getConn($name);
                 switch(self::getType($name)) {
                         case 'Dummy':
-                                $c->resource = 1;
+                                $c->result = 1;
                                 printf("################################################################################\n");
                                 printf("SSql Dummy Query: \n        \n%s\n\n", preg_replace('#^#m', '    ', self::format($query)));
                                 break;
                         case 'MySQL':
-                                $c->resource = mysql_query($query, self::getHandle($name));
+                                $c->result = mysql_query($query, self::getHandle($name));
                                 break;
                         case 'MySQLi':
-                                $c->resource = @mysqli_query(self::getHandle($name), $query);
+                                $c->result = self::getHandle($name)->query($query);
                                 break;
                         case 'SQLite':
-                                $c->resource = @sqlite_query(self::getHandle($name), $query);
+                                $c->result = @sqlite_query(self::getHandle($name), $query);
                                 break;
                         case 'SQLite3':
-                                $o = self::getHandle($name);
-                                $c->resource = $o->query($query);
+                                $c->result = self::getHandle($name)->query($query);
                                 break;
                         case 'PostgreSQL':
                                 pg_send_query(self::getHandle($name), $query);
-                                $c->resource = pg_get_result(self::getHandle($name));
+                                $c->result = pg_get_result(self::getHandle($name));
                                 break;
                         case 'MSSQL':
-                                $c->resource = @mssql_query($query, self::getHandle($name));
+                                $c->result = @mssql_query($query, self::getHandle($name));
                                 break;
                         default:
-                                throw new SSqlInputException('Method query does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method query does not have behaviour specified for DB type %s', self::getType($name));
                 }
-                if (!$c->resource)
+                if (!$c->result)
                         self::throwSqlException($name);
 
-                return $c->resource;
+                return $c->result;
         }
 
         public static function escape($var, $name = NULL)
@@ -295,18 +295,17 @@ class SSql
                         case 'MySQL':
                                 return mysql_real_escape_string("$var", self::getHandle($name));
                         case 'MySQLi':
-                                return mysqli_real_escape_string(self::getHandle($name), "$var");
+                                return self::getHandle($name)->escape_string($var);
                         case 'SQLite':
                                 return sqlite_escape_string("$var");
                         case 'SQLite3':
-                                $o = self::getHandle($name);
-                                return $o->escapeString("$var");
+                                return self::getHandle($name)->escapeString("$var");
                         case 'PostgreSQL':
                                 return pg_escape_string(self::getHandle($name), "$var");
                         case 'MSSQL':
                                 return str_replace(array('\'', "\0"), array('\'\'', '[NULL]'), "$var"); # copied from a comment on php.net by vollmer@ampache.org
                         default:
-                                throw new SSqlInputException('Method escape does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method escape does not have behaviour specified for DB type %s', self::getType($name));
                 }
         }
 
@@ -317,25 +316,24 @@ class SSql
                                 $id = 0;
                                 break;
                         case 'MySQL':
-                                $id = @mysql_insert_id(self::getResource($name));
+                                $id = @mysql_insert_id(self::getResult($name));
                                 break;
                         case 'MySQLi':
-                                $id = @mysqli_insert_id(self::getHandle($name));
+                                $id = self::getHandle($name)->insert_id;
                                 break;
                         case 'SQLite':
                                 $id = @sqlite_last_insert_rowid(self::getHandle($name));
                                 break;
                         case 'SQLite3':
-                                $o = self::getHandle($name);
-                                $id = $o->lastInsertRowId();
+                                $id = self::getHandle($name)->lastInsertRowId();
                                 break;
                         case 'PostgreSQL':
-                                $id = @pg_last_oid(self::getResource($name));
+                                $id = @pg_last_oid(self::getResult($name));
                                 break;
                         case 'MSSQL':
                                 $id = self::getVar('SELECT @@IDENTITY');        # there is no *_insert_id equivalent for MSSQL
                         default:
-                                throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 if (is_null($id))
                         self::throwSqlException($name);
@@ -343,33 +341,67 @@ class SSql
                 return $id;
         }
 
-        public static function getAffectedRows($name = NULL)
+        public static function getNumRows($result, $name = NULL)
         {
                 switch(self::getType($name)) {
                         case 'Dummy':
                                 $rows = 0;
                                 break;
                         case 'MySQL':
-                                $rows = @mysql_affected_rows(self::getResource($name));
+                                $rows = @mysql_num_rows($result);
                                 break;
                         case 'MySQLi':
-                                $rows = @mysqli_affected_rows(self::getHandle($name));
+                                $rows = $result->num_rows;
                                 break;
                         case 'SQLite':
-                                $rows = @sqlite_changes(self::getResource($name));
+                                $rows = @sqlite_num_rows($result);
                                 break;
                         case 'SQLite3':
-                                $o = self::getHandle($name);
-                                $rows = $o->changes();
+                                # TODO
+                                $rows = $result->changes();
                                 break;
                         case 'PostgreSQL':
-                                $rows = @pg_affected_rows(self::getResource($name));
+                                $rows = @pg_num_rows($result);
                                 break;
                         case 'MSSQL':
-                                $rows = @mssql_rows_affected(self::getResource($name));
+                                $rows = @mssql_num_rows($result);
                                 break;
                         default:
-                                throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getNumRows does not have behaviour specified for DB type %s', self::getType($name));
+                }
+                if (is_null($rows))
+                        self::throwSqlException($name);
+
+                return $rows;
+        }
+
+        public static function getAffectedRows($name = NULL)
+        {
+                $handle = self::getHandle($name);
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                $rows = 0;
+                                break;
+                        case 'MySQL':
+                                $rows = @mysql_affected_rows($handle);
+                                break;
+                        case 'MySQLi':
+                                $rows = $handle->affected_rows;
+                                break;
+                        case 'SQLite':
+                                $rows = @sqlite_changes($handle);
+                                break;
+                        case 'SQLite3':
+                                $rows = $handle->changes();
+                                break;
+                        case 'PostgreSQL':
+                                $rows = @pg_affected_rows(self::getResult($name));
+                                break;
+                        case 'MSSQL':
+                                $rows = @mssql_rows_affected($handle);
+                                break;
+                        default:
+                                throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 if (is_null($rows))
                         self::throwSqlException($name);
@@ -380,7 +412,7 @@ class SSql
         private static function name(&$name)
         {
                 if (!is_null($name) && (!is_string($name) || preg_match('#[^a-zA-Z0-9_]#', $name)))
-                        throw new SSqlInputException('$name must be a string of alphanumerics and underscores, you passed '.$name);
+                        throw new SSqlInputException('$name must be a string of alphanumerics and underscores, you passed %s', $name);
 
                 if (is_null($name))
                         $name = self::default_name;
@@ -398,16 +430,14 @@ class SSql
                                 $var = $row? reset($row) : NULL;
                                 break;
                         case 'MySQLi':
-                                $row = mysqli_fetch_row($res);
+                                $row = $res->fetch_row($res);
                                 $var = $row? reset($row) : NULL;
                                 break;
                         case 'SQLite':
                                 $var = sqlite_fetch_single($res);
                                 break;
                         case 'SQLite3':
-                                $r = self::getResource($name);
-                                $row = $r->fetchArray();
-                                $r->finalize();
+                                $row = $res->fetchArray();
                                 $var = $row? reset($row) : NULL;
                                 break;
                         case 'PostgreSQL':
@@ -419,7 +449,7 @@ class SSql
                                 $var = $row? reset($row) : NULL;
                                 break;
                         default:
-                                throw new SSqlInputException('Method getVar does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getVar does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 self::putOutput($var, $name);
                 return $var;
@@ -442,7 +472,7 @@ class SSql
                                         $col[] = reset($row);
                                 break;
                         case 'MySQLi':
-                                while ($row = mysqli_fetch_row($res))
+                                while ($row = $res->fetch_row($res))
                                         $col[] = reset($row);
                                 break;
                         case 'SQLite':
@@ -450,8 +480,7 @@ class SSql
                                         $col = $column;
                                 break;
                         case 'SQLite3':
-                                $r = self::getResource($name);
-                                while ($row = $r->fetchArray())
+                                while ($row = $res->fetchArray())
                                         $col[] = reset($row);
                                 $r->finalize();
                                 break;
@@ -464,7 +493,7 @@ class SSql
                                         $col[] = reset($row);
                                 break;
                         default:
-                                throw new SSqlInputException('Method getCol does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getCol does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 self::putOutput($col, $name);
                 return $col;
@@ -486,15 +515,13 @@ class SSql
                                 $o = mysql_fetch_object($res);
                                 break;
                         case 'MySQLi':
-                                $o = mysqli_fetch_object($res);
+                                $o = $res->fetch_object();
                                 break;
                         case 'SQLite':
                                 $o = sqlite_fetch_object($res);
                                 break;
                         case 'SQLite3':
-                                $r = self::getResource($name);
-                                $o = (object) $r->fetchArray(SQLITE3_ASSOC);
-                                $r->finalize();
+                                $o = (object) $res->fetchArray(SQLITE3_ASSOC);
                                 break;
                         case 'PostgreSQL':
                                 $o = pg_fetch_object($res);
@@ -503,7 +530,7 @@ class SSql
                                 $o = mssql_fetch_object($res);
                                 break;
                         default:
-                                throw new SSqlInputException('Method getRow does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getRow does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 $row = $o? $o : NULL;
                 self::putOutput($row, $name);
@@ -527,7 +554,7 @@ class SSql
                                         $array[] = $o;
                                 break;
                         case 'MySQLi':
-                                while ($o = mysqli_fetch_object($res))
+                                while ($o = $res->fetch_object())
                                         $array[] = $o;
                                 break;
                         case 'SQLite':
@@ -535,7 +562,7 @@ class SSql
                                         $array[] = $o;
                                 break;
                         case 'SQLite3':
-                                $r = self::getResource($name);
+                                $r = self::getResult($name);
                                 while ($o = $r->fetchArray(SQLITE3_ASSOC))
                                         $array[] = $o;
                                 break;
@@ -548,7 +575,7 @@ class SSql
                                         $array[] = $o;
                                 break;
                         default:
-                                throw new SSqlInputException('Method getResults does not have behaviour specified for DB type '.self::getType($name));
+                                throw new SSqlInputException('Method getResults does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 self::putOutput($array, $name);
                 return $array;
@@ -669,9 +696,39 @@ class SSql
 
                 return implode("\n", $output);
         }
+
+        # rewind the current result set to the start (for re-iteration)
+        public static function rewind($result, $name = NULL)
+        {
+                switch(self::getType($name)) {
+                        case 'Dummy':
+                                break;
+                        case 'MySQL':
+                                mysql_data_seek($result, 0);
+                                break;
+                        case 'MySQLi':
+                                $result->data_seek(0);
+                                break;
+                        case 'SQLite':
+                                sqlite_rewind($result);
+                                break;
+                        case 'SQLite3':
+                                $result->reset();
+                                break;
+                        case 'PostgreSQL':
+                                pg_result_seek($result, 0);
+                                break;
+                        case 'MSSQL':
+                                mssql_data_seek($result, 0);
+                                break;
+                        default:
+                                throw new SSqlInputException('Method rewind does not have behaviour specified for DB type %s', self::getType($name));
+                }
+                return NULL;
+        }
 }
 
-class SSqlException      extends Exception {}
+class SSqlException      extends SPFException  {}
 class SSqlInputException extends SSqlException {}
 class SSqlSqlException   extends SSqlException {}
 
