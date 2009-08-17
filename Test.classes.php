@@ -1,5 +1,36 @@
 <?php
- /******************************************************************************
+/*******************************************************************************
+ *
+ *         Name:  Test -- a static unit testing class
+ *
+ *  Description:  A simple unit testing class that will generate stats
+ *                and provide Class summaries. Has some pre-specified
+ *                tests for convenience.
+ *
+ * Requirements:  PHP 5.2.0+
+ *
+ *      Methods:  init() -- sets up a new PHP error handler
+ *                t(string $name, mixed $func, array $params, string $against_func_str, bool $hide_stack_trace = false)
+ *                summary([class1, class2, ..., classN])
+ *                selfTest(bool $no_recurse = false)
+ *
+ *         Note:  $against_func is a string that will be converted to a
+ *                function at runtime. It is passed one variable; $result,
+ *                which is to be tested. It MUST return a boolean.
+ *
+ *   Predefined:  RESULT_NULL
+ *                RESULT_TRUE
+ *                RESULT_FALSE
+ *                RESULT_EXCEPTION
+ *
+ *       Author:  Adam Piper (adamp@ahri.net)
+ *
+ *      Version:  0.1
+ *
+ *         Date:  2009-08-17
+ *
+ *      License:  BSD (3 clause, 1999-07-22)
+ *
  * Copyright (c) 2009, Adam Piper
  * All rights reserved.
  *
@@ -27,7 +58,8 @@
  *
  ******************************************************************************/
 
-class Test {
+class Test
+{
         private static $total_count = array();
         private static $pass_count  = array();
         private static $funcs       = array();
@@ -46,19 +78,19 @@ class Test {
         public static function errorHandler($errno, $errstr, $errfile, $errline)
         {
                 $errors = array(1 => 'E_ERROR', 2 => 'E_WARNING', 4 => 'E_PARSE', 8 => 'E_NOTICE', 16 => 'E_CORE_ERROR', 32 => 'E_CORE_WARNING', 64 => 'E_COMPILE_ERROR', 128 => 'E_COMPILE_WARNING', 256 => 'E_USER_ERROR', 512 => 'E_USER_WARNING', 1024 => 'E_USER_NOTICE', 2048 => 'E_STRICT', 4096 => 'E_RECOVERABLE_ERROR');
-                if (!isset($errors[$errno])) throw new TestException("Unknown error code: $errno");
+                if (!isset($errors[$errno])) throw new TestException('Unknown error code: %s', $errno);
                 printf("ERROR (%s): %s in %s:%s\n", $errors[$errno], $errstr, $errfile, $errline);
         }
 
         private static function funcIndexLookup($func)
         {
-                foreach (self::$funcs as $i => $f) {
+                foreach (self::$funcs as $i => $f)
                         if ($func == $f) return $i;
-                }
+
                 throw new TestException('Could not find function index');
         }
 
-        public static function t($name, $func, $params, $against_func_str, $hide_stack_trace = false)
+        public static function t($name, $func, $params, $against_func_str /* $result is passed into this function */, $hide_stack_trace = false)
         {
                 # track what we've tested
                 if (!in_array($func, self::$funcs)) self::$funcs[] = $func;
@@ -69,11 +101,10 @@ class Test {
                 $result = null;
                 $pstrings = array();
 
-                foreach ($params as $i => $p) {
+                foreach ($params as $i => $p)
                         $pstrings[] = '$params['.$i.']';
-                }
 
-                if (is_array($func) && sizeof($func) == 2) {
+                if (is_array($func) && sizeof($func) == 2)
                         switch (gettype($func[0])) {
                                 case 'object':
                                         $o = $func[0];
@@ -83,9 +114,8 @@ class Test {
                                         $func = $func[0].'::'.$func[1];
                                         break;
                                 default:
-                                        throw new TestInputException('Passed function is of unrecognisable type: '.gettype($func[0]));
+                                        throw new TestInputException('Passed function is of unrecognisable type: %s', gettype($func[0]));
                         }
-                }
 
                 try {
                         # execute the test
@@ -103,31 +133,25 @@ class Test {
 
                         $check = $against($result);
 
-                        if ($check === true) {
+                        if ($check === TRUE) {
                                 self::$pass_count[$fi]++;
                                 printf("Passed: %s\n", $name);
-                        } elseif ($check === false) {
+                        } elseif ($check === FALSE) {
                                 printf("FAILED: %s\n", $name);
                         } else {
                                 ob_start();
                                 var_dump($check);
                                 $check_dump = ob_get_contents();
                                 ob_end_clean();
-                                throw new TestInputException(sprintf('Test functions may only return true or false. Received: %s', $check_dump));
+                                throw new TestInputException('Test functions may only return true or false. Received: %s', $check_dump);
                         }
                 } catch (Exception $e) {
-                        # TODO: this isn't working.............
                         printf("FATAL EXCEPTION (%s): %s\n", get_class($e), $e->getMessage());
                         $e->getTraceAsString();
                         die();
                 }
 
                 return $result;
-        }
-
-        public static function returner($return)
-        {
-                return $return;
         }
 
         public static function summary()
@@ -211,7 +235,7 @@ class Test {
         }
 }
 
-class TestException      extends Exception     {}
+class TestException      extends SPFException  {}
 class TestInputException extends TestException {}
 
 ?>
