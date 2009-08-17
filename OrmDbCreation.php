@@ -210,6 +210,8 @@ if       (sizeof($_POST) == 0) {
                         $allownull = $tr->td()->input();
                         $allownull->type = 'checkbox';
                         $allownull->name = sprintf('allownull_%s.%s', $class, $p);
+                        if ($o->is_irelationship)
+                                $allownull->checked = 'checked';
 
                         $autoinc = $tr->td()->input();
                         $autoinc->type = 'checkbox';
@@ -282,7 +284,7 @@ if       (sizeof($_POST) == 0) {
                         }
 
                         foreach ($objs[$rship]->properties as $p) {
-                                $rowMatch = rowMatch($orm_name, $class, $p);
+                                $rowMatch = rowMatch($orm_name, $rship, $p);
 
                                 $properties[] = sprintf("    %s__var__%s %s%s%s",
                                                         Orm::classToDbName($rship),
