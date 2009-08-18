@@ -232,9 +232,22 @@ abstract class Orm
                 return self::getSchema($name)->ssql_name;
         }
 
-        public static final function getSqlResourceCache($name = NULL)
+        # Takes SQL and checked for a cached result to avoid re-running SQL
+        protected static final function getSqlResult($name, $sql)
         {
-                return self::getSchema($name)->sql_result_cache;
+                $hash = sha1($sql);
+
+                if (isset(self::getSchema($name)->sql_result_cache[$hash])) {
+                        $result = self::getSchema($name)->sql_result_cache[$hash];
+                        SSql::rewind($result, self::getSSqlName($name)); # rewind the result automatically
+                        return $result;
+                }
+
+                # we didn't find the cached result so execute, add to cache and return the result
+                $ssql_name = self::getSSqlName($name);
+                self::name($name);
+                self::$schemas[$name]->sql_result_cache[$hash] = ($result = SSql::query($sql, $ssql_name));
+                return $result;
         }
 
         # DO NOT USE self::name() BELOW THIS POINT!
@@ -663,7 +676,7 @@ abstract class Orm
         #                       (object->input == string || object->output == string)
         #               i.e. you may match against either the input or output of a rule, thereby stipulating a table as a waypoint
         #
-        protected static final function generateSqlComponents($name, array $destinations, $waypoints = array(), &$chain = NULL)
+        protected static final function generateSqlComponents($name, array $destinations, $waypoints = array())
         {
                 $chain = array();
 
@@ -978,8 +991,10 @@ abstract class Orm
                         $last_rule  = $rule;
                 }
 
+                # format the chain to a reasonable string
+                $chain = preg_replace('#(?<alias>[^ ]+)__(?<class>[^ ]+)#', '(\1) -> \2', implode(' -> ', $chain));
 
-                $o = new OrmSqlComponents();
+                $o = new OrmSqlComponents($chain);
                 $o->set('SELECT', implode(', ', $select));
                 $o->set('FROM',   implode(', ', array_unique($from)));
                 if (sizeof($where) > 0)
@@ -988,46 +1003,7 @@ abstract class Orm
                 return $o;
         }
 
-
-        # Takes input of various classes in/out and checks for a cached version of the SQL to avoid the auto routing process
-        /*
-the caching is in place to limit the number of times that pathfinding is done
-pathfinding results in components
-components are translated into SQL
-
-we are:
-        storing the SQL
-        unable to merge in further components
-        substituting the variables
-        executing the stored SQL
-
-we could:
-        store the components
-        merge in further components
-        convert the merged components into SQL
-        substitute the variables
-        execute the generated SQL
-        POSITIVES:
-                caching is working the way we want, and we can throw in some extra components
-        NEGATIVES:
-                one side-effect of the caching that i like is that the SQL is all nicely readable in the file;
-                if we end up serialising a component object then uh... that kinda sucks for readability
-                one thing to note here though is that this nicely readable stuff was just a side-effect
-                another thing to note is that we don't want people screwing with that SQL anyway
-
-
-
-notes:
-        merging and converting the components is pretty light on resources
-        should explore the order in which the components are put into SQL (as the SELECT should be first...)
-        perhaps SQL components should be a specified class (OrmSqlComponents) with known members in a specific order
-                this would allow refactoring so that merging and ordering are done in there
-
-        PLEASE PLEASE PLEASE remember that the variable arguments FOR THE "further components" MUST NOT be part of the hash, therefore they must be kept seperate
-        YOU FUCKING RETARD. WE DON'T NEED FUCKING VARIABLE ARGS FOR THE FUCKING FURTHER COMPONENTS.
- 
-        */
-        public static final function getSqlOLD($destinations, $waypoints, $name = NULL)
+        public static final function getSql($destinations, $waypoints, $name = NULL)
         {
                 $dests = $destinations;
                 $vals = array();
@@ -1039,7 +1015,7 @@ notes:
                                 foreach ($d->input as $key => &$val) {
                                         $varname = sprintf('$i%d_%s%s_%s', $i, self::classToDbName($d->class), isset($d->alias)? '_'.self::classToDbName($d->alias) : '', self::propertyToDbName($key));
                                         $func_args[] = $varname;
-                                        $vals[] = self::sqlVar($name, $val); # TODO: think about moving the escapes into the $func_body -- would require shenanigans with $name
+                                        $vals[] = self::sqlVar($name, $val);
                                         $val = sprintf('{%s}', $varname);
                                 }
 
@@ -1058,7 +1034,7 @@ notes:
                         $sql = call_user_func_array(create_function($func_args, $func_body), $vals);
 
                 } else {
-                        $func_body = sprintf("return \"\n%s\";", SSql::format(self::getSqlFromComponents(self::generateSqlComponents($name, $dests, $waypoints))));
+                        $func_body = sprintf("return \n%s;", self::generateSqlComponents($name, $dests, $waypoints)->toRecipe());
 
                         # add to cache
                         if (class_exists(self::orm_class_sql_cache))
@@ -1070,119 +1046,8 @@ notes:
                 return $sql;
         }
 
-
-        public static final function getSql($destinations, $waypoints, $name = NULL)
-        {
-                # TODO: remove this and do caching
-                # TODO: no escapeage is going on here ;)
-                $dests = $destinations;
-                foreach ($dests as $i => &$d) {
-                        self::objectify($d);
-                        if (isset($d->input))
-                                foreach ($d->input as $key => &$val)
-                                        $val = self::sqlVar($name, $val);
-                }
-                $components = self::generateSqlComponents($name, $dests, $waypoints, $chain);
-# TODO - move the following debug line to somewhere useful
-printf("TABLE CHAIN: %s\n", preg_replace('#([^ ]+)__([^ ]+)#', '(\1) -> \2', implode(' -> ', $chain)));
-#printf("%s\n", SSql::format($components));
-
-                return $components;
-                ######################################################################################
-
-                # 1. calc hash
-                $dests = $destinations;
-                $vals = array();
-                $func_args = array();
-                $hash = serialize($waypoints);
-                foreach ($dests as $i => &$d) {
-                        self::objectify($d);
-                        if (isset($d->input))
-                                foreach ($d->input as $key => &$val) {
-                                        $varname = sprintf('$i%d_%s%s_%s', $i, self::classToDbName($d->class), isset($d->alias)? '_'.self::classToDbName($d->alias) : '', self::propertyToDbName($key));
-                                        $func_args[] = $varname;
-                                        $vals[] = self::sqlVar($name, $val); # TODO: think about moving the escapes into the $func_body -- would require shenanigans with $name
-                                        $val = sprintf('{%s}', $varname);
-                                }
-
-                        if (isset($d->output))
-                                $hash .= sprintf('%s_%s', $d->class, isset($d->alias)? $d->alias : '');
-                }
-
-                $hash = 'h'.sha1($hash.($func_args = implode(', ', $func_args)));
-
-                # 2. self::getSqlComponents($dests, $waypoints, $hash, $name)
-                $components = self::getSqlComponents($dests, $waypoints, $hash, $name);
-
-                # TODO
-                # 3. merge Components
-                # 4. convert to string
-                # 5. substitute values
-                # 6. return string
-        }
-
-        # TODO: should this be private?
-        # TODO: is this even used? how?
-        public static final function getSqlComponents($destinations, $waypoints, $hash, $name = NULL)
-        {
-                $func_name = class_exists(self::orm_class_sql_cache)? call_user_func(array(self::orm_class_sql_cache, 'getFuncName'), $hash, $name) : NULL;
-
-                if ($func_name && method_exists(self::orm_class_sql_cache, $func_name)) { # found in cache
-                        $components = call_user_func(array(self::orm_class_sql_cache, $func_name));
-
-                } else if ($func_name && $func_body = call_user_func(array(self::orm_class_sql_cache, 'getRecentlyCachedBody'), $hash, $name)) {
-                        $components = call_user_func(create_function($func_args, $func_body));
-
-                } else {
-                        $func_body = sprintf('return unserialize(%s);', serialize(self::generateSqlComponents($name, $destinations, $waypoints)));
-
-                        # add to cache
-                        if (class_exists(self::orm_class_sql_cache))
-                                call_user_func(array(self::orm_class_sql_cache, 'add'), $hash, $func_body, $name);
-
-                        #$components = call_user_func(create_function(array(), $func_body));
-                }
-
-                return $components;
-        }
-
-        # Takes SQL and checked for a cached result to avoid re-running SQL
-        protected static final function getSqlResult($name, $sql) {
-                $result = NULL;
-                $hash = sha1($sql);
-
-                # search for a cached result
-                foreach (self::getSqlResourceCache($name) as $c) {
-                        if ($c->hash == $hash) {
-                                $result = $c->result;
-                                SSql::rewind($result, self::getSSqlName($name)); # rewind the result automatically
-                                break;
-                        }
-                }
-
-                # if we didn't find the cached result, execute the SQL
-                # TODO: THIS SHOULD NOT BE FUCKING LOOKING AT $name -- FIX THIS SHIT IMMEDIATELY. ADD A ::addResult() METHOD
-                if (is_null($result))
-                        self::$schemas[$name]->sql_result_cache[] = (object) array('hash'   => $hash,
-                                                                                   'result' => ($result = SSql::query($sql, self::getSSqlName($name))));
-
-                return $result;
-        }
-
         protected static final function classesFromResult($name, $result, $class_specs, $limit = 0)
         {
-                # TODO: get rid of $alias; $classes should be of the form array((object) array('class' => ''[, 'alias' => '']))
-
-                # person__0__firstname
-                # mtm_wishes__yearned_by__var__times,
-                # person__inherits__user__likes__surname
-
-                # if we explode the key on '__' we can inspect the sizeof each key to determine the data we have;
-                #      3 = class, result_of, property
-                #      4 = relationship, result_of, "var", property
-                #      5 = class, "inherits", child, child_result_of, property
-
-                # TODO: maybe it would be nicer if it were:
                 #      3 = result_of, class, property
                 #      4 = result_of, relationship, "var", property
                 #      5 = child_result_of, child, "inherits", class, property
@@ -1499,6 +1364,8 @@ class OrmDbCreation extends Orm
 
 class OrmSqlComponents
 {
+        private $chain = '';
+
         private $items = array('SELECT'   => '',
                                'INSERT'   => '',
                                'UPDATE'   => '',
@@ -1516,19 +1383,6 @@ class OrmSqlComponents
 
                                'LIMIT'    => '');
 
-        public function merge(OrmSqlComponents $b)
-        {
-                return clone $this;
-
-                # TODO: how exactly will this work? how do we merge 2 strings? WHERE might be joined with "AND" or "OR"??
-
-                $a = clone $this;
-                foreach ($b->items as $key => $val)
-                        $a->items[$key] = array_merge($a->items[$key], $val);
-
-                return $a;
-        }
-
         public function get($item)
         {
                 if (!isset($this->items[$item]))
@@ -1542,6 +1396,9 @@ class OrmSqlComponents
                 if (!isset($this->items[$item]))
                         throw new OrmInputException('Key %s does not exist', $item);
 
+                if (!is_string($val))
+                        throw new OrmInputException('Value must be a string. Type %s passed.', gettype($val));
+
                 $this->items[$item] = $val;
         }
 
@@ -1554,6 +1411,38 @@ class OrmSqlComponents
                                 $sql[] = sprintf("%s %s", $command, $args);
 
                 return implode(' ', $sql);
+        }
+
+        public function __construct($chain = '', $items = array())
+        {
+                if (!is_string($chain))
+                        throw new OrmInputException('Chain must be a string. Type %s passed.', gettype($chain));
+
+                $this->chain = $chain;
+                $this->items = array_merge($this->items, $items);
+        }
+
+        public function toRecipe()
+        {
+                $str = sprintf('new %s(', __CLASS__);
+                $pad = str_pad('', strlen($str));
+                $str .= sprintf("'%s',\n%sarray(", $this->chain, $pad);
+                $pad = str_pad($pad, strlen($pad) + strlen('array('));
+
+                $arr = array();
+                foreach ($this->items as $key => $value) {
+                        $arrow_pad = str_pad('', 8-strlen($key));
+                        $arr[] = sprintf('\'%s\'%s => "%s"', $key, $arrow_pad, $value);
+                }
+
+                $str .= sprintf('%s))', implode(",\n$pad", $arr));
+
+                return $str;
+        }
+
+        public function getChain()
+        {
+                return $this->chain;
         }
 }
 
