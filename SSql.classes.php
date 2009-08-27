@@ -53,7 +53,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  0.1
+ *      Version:  0.11
  *
  *         Date:  2009-08-10
  *
@@ -668,7 +668,7 @@ class SSql
                              'EXISTS',
                              'NOT EXISTS');
                 $oplen = 0;
-                foreach ($out as $line) {
+                foreach ($out as &$line) {
                         foreach ($ops as $op)
                                 if (is_int($pos = strpos($line, $op)) && $pos > $oi) {
                                         $oi = $pos;
@@ -676,25 +676,19 @@ class SSql
                                                 $oplen = $len;
                                 }
                 }
-                # then pad out any As or = signs that need it in order to line up
-                $output = array();
-                foreach ($out as $line) {
-                        $opfound = false;
+                # then pad out any AS or = signs that need it in order to line up
+                foreach ($out as &$line) {
                         foreach ($ops as $op)
                                 if (is_int($pos = strpos($line, $op)) && $pos < ($oi + ($oplen-strlen($op)))) {
-                                        $opfound = true;
                                         $spaces = '';
-                                        for ($i = 0; $i < (($oi - $pos) + $oplen-strlen($op)); $i++) {
+                                        for ($i = 0; $i < (($oi - $pos) + $oplen-strlen($op)); $i++)
                                                 $spaces .= ' ';
-                                        }
-                                        $output[] = sprintf("%s", substr_replace($line, $spaces, $pos, 0));
-                                }
 
-                        if (!$opfound)
-                                $output[] = sprintf("%s", $line);
+                                        $line = sprintf("%s", substr_replace($line, $spaces, $pos, 0));
+                                }
                 }
 
-                return implode("\n", $output);
+                return implode("\n", $out);
         }
 
         # rewind the current result set to the start (for re-iteration)
