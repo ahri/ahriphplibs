@@ -78,6 +78,7 @@
 #
 ##################
 
+
 # TODO: move from array_shift() to array_pop() for performance; array_reverse() once is acceptable to facilitate this
 
 # TODO: implement Orm::load() and OrmClass->save()
@@ -95,8 +96,10 @@
 
 # TODO: neaten up the classes, yo.
 
-class OrmException       extends SPFException {}
-class OrmInputException  extends OrmException {}
+
+class OrmException                       extends SPFException {}
+class OrmInputException                  extends OrmException {}
+class OrmRelationshipResolutionException extends OrmException {}
 
 abstract class Orm
 {
@@ -110,6 +113,7 @@ abstract class Orm
 
         private static $schemas = array();
 
+        # Start of schema-related stuff
         public final static function getNames()
         {
                 return array_keys(self::$schemas);
@@ -169,6 +173,7 @@ abstract class Orm
                 }
 
                 self::$schemas[$name]->classes       = array_unique(self::$schemas[$name]->classes);
+                # TODO: wtf?
                 self::$schemas[$name]->relationships = self::$schemas[$name]->relationships;
 
         }
@@ -221,6 +226,8 @@ abstract class Orm
                 return self::$schemas[$name];
         }
 
+        # DO NOT USE self::name() BELOW THIS POINT!
+
         public static final function getRules($name = NULL)
         {
                 return self::getSchema($name)->rules;
@@ -237,20 +244,46 @@ abstract class Orm
         {
                 $hash = sha1($sql);
 
-                if (isset(self::getSchema($name)->sql_result_cache[$hash])) {
-                        $result = self::getSchema($name)->sql_result_cache[$hash];
-                        SSql::rewind($result, self::getSSqlName($name)); # rewind the result automatically
+                $s = self::getSchema($name);
+                $ssql_name = self::getSSqlName($name);
+
+                if (isset($s->sql_result_cache[$hash])) {
+                        $result = $s->sql_result_cache[$hash];
+                        SSql::rewind($result, $ssql_name); # rewind the result automatically
                         return $result;
                 }
 
                 # we didn't find the cached result so execute, add to cache and return the result
-                $ssql_name = self::getSSqlName($name);
-                self::name($name);
-                self::$schemas[$name]->sql_result_cache[$hash] = ($result = SSql::query($sql, $ssql_name));
+                $s->sql_result_cache[$hash] = ($result = SSql::query($sql, $ssql_name));
                 return $result;
         }
 
-        # DO NOT USE self::name() BELOW THIS POINT!
+        # TODO: rship resolution function; need to throw OrmRelationshipResolutionException if cannot resolve. need to use this on user-facing stuff
+        protected static final function resolveRelationship($name, $class_a, $class_b)
+        {
+                # TODO: change func name of Orm::name() to something like Orm::internalizeName()
+                $possibilities = array();
+                foreach (self::getSchema($name) as $rule) {
+                        if       ($rule->input == $class_a && $rule->output == $class_b) {
+                                $possiblities[] = $rule;
+                        } elseif ($rule->input == $class_b && $rule->output == $class_a) {
+                                $possiblities[] = $rule;
+                        }
+                }
+
+                switch (sizeof($possiblities)) {
+                        case 0:
+                                throw new OrmRelationshipResolutionException('Failed to resolve relationship: no matches found');
+                        case 1:
+                                return reset($possibilities);
+                        default:
+                                foreach ($possiblities as $r)
+                                        $matches[] = sprintf('%s to %s as %s', $r->input, $r->output, $r->relationship);
+                                throw new OrmRelationshipResolutionException('Failed to resolve relationship: multiple matches found: %s', implode(', ', $matches));
+                }
+        }
+
+        # End of schema-related stuff
 
 
         # Important note:
@@ -617,9 +650,9 @@ abstract class Orm
                                 self::comboRecurse($items, $combos, array_merge($used, array($item)));
         }
 
-        private static final function anchorInput(array &$combo, $key, array $input) {
+        /*private static final function anchorInput(array &$combo, $key, array $input) { # method deprecated following removal of anchoring concept. TODO: remove.
                 $combo = array_merge($input, $combo);
-        }
+        }*/
 
         private static final function getRoute($name, array $combos, array $stipulations)
         {
@@ -644,28 +677,24 @@ abstract class Orm
                         $var = (object) $var;
         }
 
-        private static final function rshipRespecify(&$class, $dummy, $name) # TODO: figure out why I need the dummy variable here
+        private static final function rshipRespecify(&$class, $key, $name)
         {
                 if (self::isRegisteredIRelationship($name, $class))
                         $class = (object) array('relationship' => $class);
         }
 
-        private static final function rshipRespecifyArray(&$array, $dummy, $name) # TODO: figure out why I need the dummy variable here
+        private static final function rshipRespecifyArray(&$array, $key, $name)
         {
                 array_walk($array, array('self', 'rshipRespecify'), $name);
         }
 
         # Constructs SQL from Class-based specifications of input/output
         #
-        #         Bear in mind that when calling this method, if your first destination has an input then it's "anchored" at the start of the chain
-        #         otherwise every combination of destination order is attempted. TODO: why did i even do it this way? Why not ditch this and just
-        #         pick the chain order that is shortest?.... think about this! TODO TODO TODO
-        #
         #         destinations: object->class  = "classname"
         #                             [->input  = (spec)]
         #                             [->output = true]
         #
-        #         waypoints are of a DIFFERENT FORM from destinations
+        #         waypoints are of a DIFFERENT FORM than destinations
         #
         #         waypoints refer to rules you require the route to use, they can be either rule objects of the form:
         #                       object->input
@@ -721,12 +750,13 @@ abstract class Orm
 
                 } else {
                         # generate list of destination classes
+                        # TODO: remove (a) and (b); anchoring no longer occurs
                         #       a) first item is input
                         #               anchor first, scramble rest
                         #       b) else
                         #               scramble all
 
-                        if ($head->input) {
+                        /*if ($head->input) { # removed anchoring
                                 $list = array();
                                 foreach ($tail as $dest)
                                         $list[] = $dest->class;
@@ -734,13 +764,13 @@ abstract class Orm
                                 self::comboRecurse($list, $combos);
 
                                 array_walk($combos, array('self', 'anchorInput'), array($head->class));
-                        } else {
+                        } else {*/
                                 $list = array();
                                 foreach ($class_dests as $dest)
                                         $list[] = $dest->class;
 
                                 self::comboRecurse($list, $combos);
-                        }
+                        /*}*/
 
                         # make sure that relationships are properly specified as waypoints
                         array_walk($combos, array('self', 'rshipRespecifyArray'), $name);
@@ -1003,12 +1033,80 @@ abstract class Orm
                 return $o;
         }
 
-        public static final function getSql($destinations, $waypoints, $name = NULL)
+        private static final function cmpDests($a, $b)
         {
-                $dests = $destinations;
+                if (($cmp = strcmp($a['class'], $b['class'])) != 0)
+                        return $cmp;
+
+                if (isset($a['input']) && isset($b['input']) && ($cmp = strcmp(serialize(ksort($a['input'])), serialize(ksort($b['input'])))) != 0)
+                        return $cmp;
+
+                if (isset($a['output']) && isset($b['output']))
+                        return ($a['output'] && $b['output']);
+
+                return 0;
+
+        }
+
+        private static final function cmpWaypts($a, $b)
+        {
+                $a_str = is_string($a);
+                $b_str = is_string($b);
+                $a_obj = is_object($a);
+                $b_obj = is_object($b);
+
+                if ($a_str && $b_obj)
+                        return 1;
+
+                if ($a_obj && $b_str)
+                        return -1;
+
+                if ($a_str && $b_str)
+                        return strcmp($a, $b);
+
+                if ($a_obj && $b_obj) {
+                        $a_input_set  = isset($a->input);
+                        $a_output_set = isset($a->output);
+                        $a_alias_set  = isset($a->alias);
+                        $b_input_set  = isset($b->input);
+                        $b_output_set = isset($b->output);
+                        $b_alias_set  = isset($b->alias);
+
+                        if ($a_input_set  && $b_input_set  && ($cmp = strcmp($a->input,  $b->input))  != 0)
+                                return $cmp;
+                        if ($a_output_set && $b_output_set && ($cmp = strcmp($a->output, $b->output)) != 0)
+                                return $cmp;
+                        if ($a_alias_set  && $b_alias_set  && ($cmp = strcmp($a->alias,  $b->alias))  != 0)
+                                return $cmp;
+
+                        if ($a_input_set  && !$b_input_set)
+                                return 1;
+                        if ($b_input_set  && !$a_input_set)
+                                return -1;
+                        if ($a_output_set && !$b_output_set)
+                                return 1;
+                        if ($b_output_set && !$a_output_set)
+                                return -1;
+                        if ($a_alias_set  && !$b_alias_set)
+                                return 1;
+                        if ($b_alias_set  && !$a_alias_set)
+                                return -1;
+                }
+
+                return 0;
+        }
+
+        public static final function getSql($destinations, $waypoints = array(), $name = NULL)
+        {
+                # Copy and sort destinations and waypoints
+                $dests  = $destinations;
+                $waypts = $waypoints;
+                usort($dests,  array('self', 'cmpDests' ));
+                usort($waypts, array('self', 'cmpWaypts'));
+
                 $vals = array();
                 $func_args = array();
-                $hash = serialize($waypoints);
+                $hash = serialize($waypts);
                 foreach ($dests as $i => &$d) {
                         self::objectify($d);
                         if (isset($d->input))
@@ -1034,7 +1132,7 @@ abstract class Orm
                         $sql = call_user_func_array(create_function($func_args, $func_body), $vals);
 
                 } else {
-                        $func_body = sprintf("return \n%s;", self::generateSqlComponents($name, $dests, $waypoints)->toRecipe());
+                        $func_body = sprintf("return \n%s;", self::generateSqlComponents($name, $dests, $waypts)->toRecipe());
 
                         # add to cache
                         if (class_exists(self::orm_class_sql_cache))
@@ -1046,6 +1144,7 @@ abstract class Orm
                 return $sql;
         }
 
+        # TODO: make "alias" in specs a requirement. any internal funcs calling classesFromResult() will now need to use self::resolveRelationship($name, $class_a, $class_b) to work out which relationship (and therefore alias) is being discussed
         protected static final function classesFromResult($name, $result, $class_specs, $limit = 0)
         {
                 #      3 = result_of, class, property
