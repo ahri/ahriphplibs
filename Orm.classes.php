@@ -105,7 +105,7 @@ abstract class Orm
 {
         const default_name           = '-';
         const relationship_inherits  = 'Inherits';
-        const anchor_alias           = '0';
+        const alias_anchor           = '0';
         const auto_property_id       = 'id';
         const orm_class_sql_cache    = 'OrmSqlCache';
         const orm_class_class        = 'OrmClass';
@@ -199,7 +199,7 @@ abstract class Orm
                 return in_array($relationship, self::$schemas[$name]->relationships);
         }
 
-        protected static function validName($name)
+        public static function validName($name)
         {
                 if(!is_null($name) && (!is_string($name) || preg_match('#[^a-zA-Z0-9_]#', $name) || preg_match('#^[^a-zA-Z]#', $name)))
                         return false;
@@ -367,7 +367,7 @@ abstract class Orm
         */
 
         # returns an array of property names for a given class. If the second argument is TRUE then the class heirarchy is flattened
-        protected static final function getProperties($class, $flat = false)
+        public static final function getProperties($class, $flat = false)
         {
                 if (!is_subclass_of($class, __CLASS__))
                         throw new OrmInputException('Given class is not a subclass of '.__CLASS__);
@@ -650,9 +650,9 @@ abstract class Orm
                                 self::comboRecurse($items, $combos, array_merge($used, array($item)));
         }
 
-        /*private static final function anchorInput(array &$combo, $key, array $input) { # method deprecated following removal of anchoring concept. TODO: remove.
+        private static final function anchorInput(array &$combo, $key, array $input) { # method deprecated following removal of anchoring concept. TODO: remove.
                 $combo = array_merge($input, $combo);
-        }*/
+        }
 
         private static final function getRoute($name, array $combos, array $stipulations)
         {
@@ -694,6 +694,9 @@ abstract class Orm
         #                             [->input  = (spec)]
         #                             [->output = true]
         #
+        #         NOTE: the first destination is treated as an anchor; it is the point from which paths are calculated
+        #               the rest of the destinations are randomized and the shortest path is chosen
+        #
         #         waypoints are of a DIFFERENT FORM than destinations
         #
         #         waypoints refer to rules you require the route to use, they can be either rule objects of the form:
@@ -705,26 +708,19 @@ abstract class Orm
         #                       (object->input == string || object->output == string)
         #               i.e. you may match against either the input or output of a rule, thereby stipulating a table as a waypoint
         #
-        protected static final function generateSqlComponents($name, array $destinations, $waypoints = array())
+        protected static final function generateSqlComponents($name, array $destinations, $chain = NULL)
         {
-                $chain = array();
-
                 # ensure variable formatting
                 array_walk($destinations, array('self', 'objectify'));
 
                 # turn the destinations into specifications
                 $class_dests = array();
+                $waypoints   = array();
                 foreach ($destinations as $dest) {
                         if (!isset($dest->class))
                                 throw new OrmInputException('Must set "class" variable for destinations');
 
-
-
-                        /*$o = (object) array('output' => $dest->class,
-                                            'lookup' => isset($dest->input)? $dest->input : false,
-                                            'get_vars' => isset($dest->output)? $dest->output : false);*/
-
-                        if (self::isRegisteredClass($name, $dest->class) && isset($dest->alias) && $dest->alias != self::anchor_alias)
+                        if (self::isRegisteredClass($name, $dest->class) && isset($dest->alias) && $dest->alias != self::alias_anchor)
                                 $waypoints[] = (object) array('alias' => $dest->alias); # these are infered waypoints
 
                         if (self::isRegisteredIRelationship($name, $dest->class))
@@ -738,25 +734,23 @@ abstract class Orm
                 if ($dest_count == 0)
                         throw new OrmInputException('Must supply one or more destinations');
 
-                $tail = $class_dests;
-                $head = array_shift($tail);
 
-
-                if ($dest_count == 1) {
-                        # create a fake route for SQL generation consisting of a single rule (with a hackish invalid alias name)
-                        $route = array((object) array('input'         => $head->class,
-                                                      'output'        => $head->class,
-                                                      'relationship'  => self::anchor_alias));
-
+                if ($chain) {
+                        $route = self::routeFromChain($name, $chain, $destinations);
                 } else {
-                        # generate list of destination classes
-                        # TODO: remove (a) and (b); anchoring no longer occurs
-                        #       a) first item is input
-                        #               anchor first, scramble rest
-                        #       b) else
-                        #               scramble all
+                        $tail = $class_dests;
+                        $head = array_shift($tail);
 
-                        /*if ($head->input) { # removed anchoring
+                        if ($dest_count == 1) {
+                                # create a fake route for SQL generation consisting of a single rule (with a hackish invalid alias name)
+                                $route = array((object) array('input'         => $head->class,
+                                                              'output'        => $head->class,
+                                                              'relationship'  => self::alias_anchor));
+
+                        } else {
+                                # generate list of destination classes
+                                #       anchor first, scramble rest
+
                                 $list = array();
                                 foreach ($tail as $dest)
                                         $list[] = $dest->class;
@@ -764,26 +758,62 @@ abstract class Orm
                                 self::comboRecurse($list, $combos);
 
                                 array_walk($combos, array('self', 'anchorInput'), array($head->class));
-                        } else {*/
-                                $list = array();
-                                foreach ($class_dests as $dest)
-                                        $list[] = $dest->class;
 
-                                self::comboRecurse($list, $combos);
-                        /*}*/
+                                # make sure that relationships are properly specified as waypoints
+                                array_walk($combos, array('self', 'rshipRespecifyArray'), $name);
 
-                        # make sure that relationships are properly specified as waypoints
-                        array_walk($combos, array('self', 'rshipRespecifyArray'), $name);
-
-                        if (!$route = self::getRoute($name, $combos, $waypoints))
-                                throw new OrmInputException("Could not calculate a valid route for this combination of destinations");
+                                if (!$route = self::getRoute($name, $combos, $waypoints))
+                                        throw new OrmInputException("Could not calculate a valid route for this combination of destinations");
+                        }
                 }
 
-                # by this point we have a valid route, started off with a dummy rule that has an alias of "0"
+                return self::sqlFromRoute($name, $route, $destinations, $class_dests);
+        }
+
+        public static function routeFromChain($name, $chain, $destinations)
+        {
+                # check that all destinations are accounted-for
+                foreach ($destinations as $dest) {
+                        if (self::isRegisteredIRelationship($name, $dest->class)) {
+                                if (!preg_match(sprintf('#\(%s\)#', $dest->class), $chain))
+                                        throw new OrmInputException('Destination "%s" is not accounted for in the given chain', $dest->class);
+
+                        } else if (self::isRegisteredClass($name, $dest->class))  {
+                                if (!preg_match(sprintf('#(^| )%s( |$)#', $dest->class), $chain))
+                                        throw new OrmInputException('Destination "%s" is not accounted for in the given chain', $dest->class);
+                        } else {
+                                throw new OrmInputException('The destination "%s" is registered neither as a Class or Relationship', $dest->class);
+                        }
+                }
+
+                $route = array();
+                while (preg_match('#^([^ ]+) -> \(([^\)]+)\) -> ([^ ]+)#', $chain, $m)) {
+                        list($subchain, $c1, $r, $c2) = $m;
+                        $added = FALSE;
+                        foreach (self::getRules($name) as $rule)
+                                if ($rule->relationship == $r && (($rule->input == $c1 && $rule->output == $c2) || ($rule->input == $c2 && $rule->output == $c1))) {
+                                        $added = TRUE;
+                                        $route[] = $rule;
+                                }
+
+                        if (!$added)
+                                throw new OrmInputException('No defined rule was found to match the subchain "%s"', $subchain);
+
+                        $chain = substr($chain, strlen(sprintf('%s -> (%s) -> ', $m[1], $m[2])));
+                }
+
+                return $route;
+        }
+
+        private static function sqlFromRoute($name, $route, $destinations, $class_dests)
+        {
+                $chain = array();
 
                 $last_rule = (object) array('input'         => NULL,
-                                            'output'        => $head->class,
-                                            'relationship'  => self::anchor_alias);
+                                            'output'        => reset($class_dests)->class,
+                                            'relationship'  => self::alias_anchor);
+
+                # by this point we have a valid route, started off with a dummy rule that has an alias of "0"
 
                 # prepare the Nodes array
                 $inputs = $outputs = array($last_rule->output);
@@ -827,7 +857,7 @@ abstract class Orm
                 if (sizeof($class_dests) > 1)
                         $route[] = NULL; # add an extra element so that the chain continues long enough to evaluate the final table
 
-                $select = $from = $where = array();
+                $select = $from = $where = $seen_results = array();
                 foreach ($route as $rule) {
                         ### reset vars to avoid confusion
                         $current_table    =
@@ -889,10 +919,19 @@ abstract class Orm
                                 $link_unused_node = true;
                         }
 
-                        $result_of_sql   = $result_of == self::anchor_alias? $result_of : self::classToDbName($result_of);
+                        $result_of_sql   = $result_of == self::alias_anchor? $result_of : self::classToDbName($result_of);
                         $current_table   = self::classToDbName($current_class);
                         /*$current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $current_table, $result_of_sql) : $current_table;*/
+
+                        /*# result increments
+                        if (!isset($seen_results[$result_of_sql])) {
+                                $seen_results[$result_of_sql] = 0;
+                                $result_of_incremented = sprintf('%s__0', $result_of_sql);
+                        } else {
+                                $result_of_incremented = sprintf('%s__%s', $result_of_sql, ++$seen_results[$result_of_sql]);
+                        }*/
                         $current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $result_of_sql, $current_table) : $current_table;
+                        #$current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", /*$result_of_sql*/$result_of_incremented, $current_table) : $current_table;
                         $linked_table    = self::classToDbName($linked_class);
                         if ($link)
                                 $linked_alias    = self::isRegisteredClass($name, $linked_class)? sprintf("%s__%s", $link_sql, $linked_table) : $linked_table;
@@ -1022,7 +1061,8 @@ abstract class Orm
                 }
 
                 # format the chain to a reasonable string
-                $chain = preg_replace('#(?<alias>[^ ]+)__(?<class>[^ ]+)#', '(\1) -> \2', implode(' -> ', $chain));
+                #$chain = preg_replace('#(?<alias>[^ ]+)__(?<class>[^ ]+)#', '(\1) -> \2', implode(' -> ', $chain));
+                $chain = preg_replace_callback('#([^ ]+)__([^ ]+)#', array('self', 'chainFormatCallback'), implode(' -> ', $chain));
 
                 $o = new OrmSqlComponents($chain);
                 $o->set('SELECT', implode(', ', $select));
@@ -1031,6 +1071,14 @@ abstract class Orm
                         $o->set('WHERE', implode(' AND ', $where ));
 
                 return $o;
+        }
+
+        private static final function chainFormatCallback($match)
+        {
+                if ($match[1] == self::alias_anchor)
+                        return self::dbToClassName($match[2]);
+
+                return sprintf('(%s) -> %s', self::dbToClassName($match[1]), self::dbToClassName($match[2]));
         }
 
         private static final function cmpDests($a, $b)
@@ -1048,6 +1096,7 @@ abstract class Orm
 
         }
 
+        /*
         private static final function cmpWaypts($a, $b)
         {
                 $a_str = is_string($a);
@@ -1095,18 +1144,22 @@ abstract class Orm
 
                 return 0;
         }
+        */
 
-        public static final function getSql($destinations, $waypoints = array(), $name = NULL)
+        public static final function getSql($destinations, $chain = NULL, $name = NULL)
         {
-                # Copy and sort destinations and waypoints
-                $dests  = $destinations;
-                $waypts = $waypoints;
+                # Copy and sort destinations
+                $dests = $destinations;
+                # only sort the tail, since the head is an anchor
+                $head  = array_shift($dests);
+
                 usort($dests,  array('self', 'cmpDests' ));
-                usort($waypts, array('self', 'cmpWaypts'));
+
+                array_unshift($dests, $head);
 
                 $vals = array();
                 $func_args = array();
-                $hash = serialize($waypts);
+                $hash = serialize($chain);
                 foreach ($dests as $i => &$d) {
                         self::objectify($d);
                         if (isset($d->input))
@@ -1128,11 +1181,11 @@ abstract class Orm
                 if ($func_name && method_exists(self::orm_class_sql_cache, $func_name)) { # found in cache
                         $sql = call_user_func_array(array(self::orm_class_sql_cache, $func_name), $vals);
 
-                } else if ($func_name && $func_body = call_user_func(array(self::orm_class_sql_cache, 'getRecentlyCachedBody'), $hash, $name)) {
+                } else if ($func_name && $func_body = call_user_func(array(self::orm_class_sql_cache, 'getRecentlyCachedBody'), $hash, $name)) { # found in temporary cache
                         $sql = call_user_func_array(create_function($func_args, $func_body), $vals);
 
-                } else {
-                        $func_body = sprintf("return \n%s;", self::generateSqlComponents($name, $dests, $waypts)->toRecipe());
+                } else { # not found in any cache; generate
+                        $func_body = sprintf("return \n%s;", self::generateSqlComponents($name, $dests, $chain)->toRecipe());
 
                         # add to cache
                         if (class_exists(self::orm_class_sql_cache))
@@ -1144,55 +1197,49 @@ abstract class Orm
                 return $sql;
         }
 
-        # TODO: make "alias" in specs a requirement. any internal funcs calling classesFromResult() will now need to use self::resolveRelationship($name, $class_a, $class_b) to work out which relationship (and therefore alias) is being discussed
-        protected static final function classesFromResult($name, $result, $class_specs, $limit = 0)
+        # TODO: work out where to use self::resolveRelationship($name, $class_a, $class_b) -- it's a useful function and will be a nice guard
+
+        /** Takes an SQL result and converts it into a chain of objects (returning an OrmChainResult) **/
+        protected static final function objectsFromResult($name, $result, $chain)
         {
                 #      3 = result_of, class, property
                 #      4 = result_of, relationship, "var", property
                 #      5 = child_result_of, child, "inherits", class, property
 
-                $objects = array();
-                $class_vars = array();
-                $aliases = array();
-                $classes = array();
-                foreach ($class_specs as $spec) {
-                        if (!is_object($spec) || !isset($spec->class))
-                                throw new OrmInputException('Provided class spec is not of the required object format. Must have public property "class" and may have optional public property "alias"');
+                $chain_result = new OrmChainResult(&$chain);
 
-                        $classes[] = $spec->class;
-                        if (isset($spec->alias))
-                                $aliases[$spec->alias] = $spec->class;
+                foreach (SSql::getResultsFor($result) as $row) { # by row
+                        $row_class_vars = array();
+                        $row_rship_vars = array();
 
-                        $objects[$spec->class] = array();
-                        /*$class_vars[$spec->class] = array();*/
-                        $class_vars[$spec->class] = array('setup_name' => $name);
-                }
-
-                # TODO: need to check that classes or relationships are instanciable
-
-                foreach (SSql::getResultsFor($result) as $result) { # by row
-                        foreach ($result as $key => $val) {           # by col
+                        foreach ($row as $key => $val) {         # by col
                                 switch (sizeof($parts = explode('__', $key))) {
-                                        case 2: # result_of, property
+                                        case 2: # result_of, property -- i.e. populate a relationship
                                                 list($r_alias, $r_property) = $parts;
                                                 $r_alias        = self::dbToClassName($r_alias);
                                                 $r_property     = self::dbToPropertyName($r_property);
 
-                                                if (in_array($r_alias, $classes))
-                                                        $class_vars[$r_alias][$r_property] = $val;
+                                                $key = Orm::dbToClassName($r_alias);
+                                                if (!isset($row_rship_vars[$key]))
+                                                        $row_rship_vars[$key] = array();
+
+                                                $row_rship_vars[$key][$r_property] = $val;
                                                 break;
 
-                                        case 3: # result_of, class, property
+                                        case 3: # result_of, class, property -- i.e. populate a class
                                                 list($r_alias, $r_class, $r_property) = $parts;
                                                 $r_class    = self::dbToClassName($r_class);
                                                 $r_alias    = self::dbToClassName($r_alias);
                                                 $r_property = self::dbToPropertyName($r_property);
 
-                                                if (in_array($r_class, $classes) && (!isset($aliases[$r_alias]) || $aliases[$r_alias] == $r_class))
-                                                        $class_vars[$r_class][$r_property] = $val;
+                                                $key = sprintf('%s__%s', Orm::dbToClassName($r_alias), Orm::dbToClassName($r_class));
+                                                if (!isset($row_class_vars[$key]))
+                                                        $row_class_vars[$key] = array();
+
+                                                $row_class_vars[$key][$r_property] = $val;
                                                 break;
 
-                                        case 5: # child_result_of, child, "inherits", class, property
+                                        case 5: # child_result_of, child, "inherits", class, property -- i.e. populate the rest of a class
                                                 list($r_child_alias, $r_child, $inherits_e_inherits, $r_class, $r_property) = $parts;
                                                 $r_class             = self::dbToClassName($r_class);
                                                 $inherits_e_inherits = self::dbToClassName($inherits_e_inherits);
@@ -1203,46 +1250,58 @@ abstract class Orm
                                                 if ($inherits_e_inherits != self::relationship_inherits)
                                                         throw new OrmException('Not expecting key of form %s', $key);
 
-                                                if (in_array($r_child, $classes) && (!isset($aliases[$r_child_alias]) || $aliases[$r_child_alias] == $r_child)) {
-                                                        if ($r_property == self::auto_property_id)
-                                                                $class_vars[$r_child][sprintf('__%s__%s', $r_class, self::auto_property_id)] = $val;
-                                                        else
-                                                                $class_vars[$r_child][$r_property] = $val;
-                                                }
+                                                $key = sprintf('%s__%s', Orm::dbToClassName($r_child_alias), Orm::dbToClassName($r_child));
+                                                if (!isset($row_class_vars[$key]))
+                                                        $row_class_vars[$key] = array();
+
+                                                if ($r_property == self::auto_property_id)
+                                                        $row_class_vars[$key][sprintf('__%s__%s', $r_class, self::auto_property_id)] = $val;
+                                                else
+                                                        $row_class_vars[$key][$r_property] = $val;
                                                 break;
+
+                                        default:
+                                                throw new OrmException('Unexpected key encountered');
                                 }
                         }
 
-                        foreach ($classes as $class)
-                                if (!empty($class_vars[$class]))
-                                        $objects[$class][] = new $class($class_vars[$class], $name);
+                        $row_class_objs = array();
+                        $row_rship_objs = array();
 
-                        if ($limit > 0)
-                                if (sizeof($objects[$classes[0]]) == $limit)
-                                        break;
+                        foreach ($row_class_vars as $alias__class => $vars) {
+                                list($alias, $class) = explode('__', $alias__class);
+                                if (!self::isRegisteredClass($name, $class))
+                                        throw new OrmException('Class %s is not registered for Schema %s', $class, $name);
+
+                                $row_class_objs[$alias] = new $class($vars, $name);
+                        }
+                        foreach ($row_rship_vars as $relationship => $vars) {
+                                if (!self::isRegisteredIRelationship($name, $relationship))
+                                        throw new OrmException('Relationship %s is not registered or is not instanciable for Schema %s', $relationship, $name);
+
+                                $row_rship_objs[$alias] = new $alias($vars, $name);
+                        }
+                        $chain_result->add(new OrmChainRow(&$chain, $row_class_objs, $row_rship_objs));
                 }
 
-                return $objects;
+                return $chain_result->finalize();
         }
 
-        protected static function classesFromDestinations($destinations, $name = NULL)
+        protected static function objectsFromDestinations($destinations, $chain = NULL, $name = NULL)
         {
-                $sql      = self::getSql($destinations, array(), $name);
+                $sql      = self::getSql($destinations, $chain, $name);
                 $result   = self::getSqlResult($name, $sql);
-                $classes = array();
 
-                foreach ($destinations as $d)
-                        if (isset($d['output']) && $d['output'])
-                                $classes[] = (object) array('class' => $d['class']);
-
-                return    self::classesFromResult($name, $result, $classes);
+                return    self::objectsFromResult($name, $result, $sql->getChain());
         }
 
         public static function load($class, $name = NULL)
         {
                 $destinations = array(array('class' => $class, 'output' => true));
-                return self::classesFromDestinations($destinations, $name);
+                return self::objectsFromDestinations($destinations, NULL, $name)->anchored();
         }
+
+        abstract public function equals(Orm $that);
 }
 
 abstract class OrmClass extends Orm
@@ -1330,6 +1389,17 @@ abstract class OrmClass extends Orm
         }
         ### Accessors ###
 
+        public function equals(Orm $that)
+        {
+                if (($this_class = get_class($this)) != ($that_class = get_class($that)))
+                        return FALSE;
+
+                if ($this->getKeyValues($this_class) !== $that->getKeyValues($that_class))
+                        return FALSE;
+
+                return TRUE;
+        }
+
         public function save()
         {
                 # TODO
@@ -1346,9 +1416,20 @@ abstract class OrmClass extends Orm
                 # remember about supporting options for cacading deletes/updates; this stuff should be disableable via Orm::setup()
         }
 
-        public final function getRelatedClasses($classes) {
-                if (is_string($classes))
-                        $classes = array($classes);
+        /** Request objects by class type to have them returned from the database (classes passed as varargs) **/
+        public final function getRelsByClasses() {
+                $chain = NULL;
+                $classes = func_get_args();
+
+                foreach ($classes as $i => $class) {
+                        if (strstr($class, ' -> ')) {
+                                if (!is_null($chain))
+                                        throw new OrmInputException('Multiple chains have been passed. Already registered "%s" and now encountered "%s"', $chain, $class);
+
+                                $chain = $class;
+                                array_splice($classes, $i, 1); # remove the chain item from the classes array
+                        }
+                }
 
                 $destinations = array();
                 # add this class first with input set, and no output
@@ -1359,7 +1440,21 @@ abstract class OrmClass extends Orm
                 foreach ($classes as $class)
                         $destinations[] = array('class' => $class, 'output' => true);
 
-                return self::classesFromDestinations($destinations, $this->setup_name);
+                return self::objectsFromDestinations($destinations, $chain, $this->setup_name);
+        }
+
+        /** Request objects by single class type to have them returned from the database **/
+        public final function getRelsByClass($class, $chain = NULL) {
+
+                $destinations = array();
+                # add this class first with input set, and no output
+                $destinations[] = array('class' => $thisclass = get_class($this),
+                                        'input' => $this->getKeyValues($thisclass));
+
+                # add the other class as an output
+                $destinations[] = array('class' => $class, 'output' => true);
+
+                return self::objectsFromDestinations($destinations, $chain, $this->setup_name)->byClass($class);
         }
 }
 
@@ -1392,9 +1487,15 @@ abstract class OrmRelationship extends Orm
                         $this->setup_name = func_get_arg($name_specified);
                 }
         }
+
+        public function equals(Orm $that)
+        {
+                # TODO: this is a stub
+                return FALSE;
+        }
 }
 
-class OrmDbCreation extends Orm
+class OrmDbCreation
 {
         public static function getDbObjects($name = null)
         {
@@ -1406,7 +1507,7 @@ class OrmDbCreation extends Orm
                                     'parent'           => NULL,
                                     'relationships'    => array());
 
-                foreach (self::getRules($name) as $rule) {
+                foreach (Orm::getRules($name) as $rule) {
                         foreach ($rule as $name => $class) {
                                 if (!is_string($class))
                                         continue;
@@ -1427,21 +1528,21 @@ class OrmDbCreation extends Orm
                                                 $objs[$class_reflection->getName()] = clone $o;
 
 
-                                } while (($class_reflection = $class_reflection->getParentClass())    && # get the parent
-                                          $class_reflection->getName() != self::orm_class_class       && # check that we're not hitting the top
-                                          $class_reflection->getName() != self::orm_class_relationship); # check that we're not hitting the top
+                                } while (($class_reflection = $class_reflection->getParentClass())   && # get the parent
+                                          $class_reflection->getName() != Orm::orm_class_class       && # check that we're not hitting the top
+                                          $class_reflection->getName() != Orm::orm_class_relationship); # check that we're not hitting the top
                         }
 
                         $objs[$rule->input]->relationships[$rule->relationship] = $rule->output;
                 }
 
                 foreach ($objs as $class => $o) {
-                        if ($o->is_class = (class_exists($class) && is_subclass_of($class, parent::orm_class_class))) {
-                                $o->keys = self::getKeys($class);
-                                $o->properties = self::getProperties($class);
+                        if ($o->is_class = (class_exists($class) && is_subclass_of($class, Orm::orm_class_class))) {
+                                $o->keys       = Orm::getKeys($class);
+                                $o->properties = Orm::getProperties($class);
 
                                 $class_reflection = new ReflectionClass($class);
-                                while (($class_reflection = $class_reflection->getParentClass()) && $class_reflection->getName() != parent::orm_class_class && $class_reflection->getName() != parent::orm_class_relationship) {
+                                while (($class_reflection = $class_reflection->getParentClass()) && $class_reflection->getName() != Orm::orm_class_class && $class_reflection->getName() != Orm::orm_class_relationship) {
                                         if (!$class_reflection->isInstantiable())
                                                 continue;
 
@@ -1450,11 +1551,11 @@ class OrmDbCreation extends Orm
                                 }
                         }
 
-                        if ($o->is_irelationship = (class_exists($class) && is_subclass_of($class, parent::orm_class_relationship)))
-                                $o->properties = self::getProperties($class, true);
+                        if ($o->is_irelationship = (class_exists($class) && is_subclass_of($class, Orm::orm_class_relationship)))
+                                $o->properties = Orm::getProperties($class, true);
 
-                        if ($o->keys == array(parent::auto_property_id))
-                                array_unshift($o->properties, parent::auto_property_id);
+                        if ($o->keys == array(Orm::auto_property_id))
+                                array_unshift($o->properties, Orm::auto_property_id);
                 }
 
                 return $objs;
@@ -1543,6 +1644,210 @@ class OrmSqlComponents
         {
                 return $this->chain;
         }
+}
+
+class OrmChainRow
+{
+        private $chain = '';
+        private $class = array();
+        private $rship = array();
+
+        public function __construct($chain, array $class, array $rship)
+        {
+                $this->chain = $chain;
+                $this->class = $class;
+                $this->rship = $rship;
+        }
+
+        public function _rshipByAlias($alias)
+        {
+                if (!isset($this->rship[$alias]))
+                        throw new OrmInputException('No alias with the name %s exists', $alias);
+
+                return $this->rship[$alias];
+        }
+
+        public function _classByAlias($alias)
+        {
+                if (!isset($this->class[$alias]))
+                        throw new OrmInputException('No alias with the name %s exists', $alias);
+
+                return $this->class[$alias];
+        }
+
+        public function __get($alias)
+        {
+                return $this->_rshipByAlias($alias);
+        }
+
+        public function __call($alias, $args)
+        {
+                return $this->_classByAlias($alias);
+        }
+
+        public function __set($key, $value)
+        {
+                throw new OrmException('Objects of class %S are immutable', __CLASS__);
+        }
+
+        public function __isset($alias)
+        {
+                return isset($this->rship[$alias]);
+        }
+
+        /** A helper to get the anchored OrmClass object **/
+        public function _anchored()
+        {
+                return $this->_classByAlias(Orm::alias_anchor);
+        }
+
+
+        /** A helper to return an item by class, so long as the class is unique in the chain **/
+        public function _byClass($class)
+        {
+                $item = NULL;
+
+                foreach ($this->class as &$t)
+                        if (get_class($t) == $class)
+                                if ($item)
+                                        throw new OrmInputException('The class %s is not unique in the chain, try using chain aliases', $class);
+                                else
+                                        $item = $t;
+
+                foreach ($this->rship as &$t)
+                        if (get_class($t) == $class)
+                                if ($item)
+                                        throw new OrmInputException('The class %s is not unique in the chain, try using chain aliases', $class);
+                                else
+                                        $item = $t;
+
+                return $item;
+        }
+}
+
+class OrmChainResult implements Iterator
+{
+        private $chain = '';
+        private $final = FALSE;
+        private $rows  = array();
+
+        public function __construct($chain)
+        {
+                $this->chain = $chain;
+        }
+
+        public function add(OrmChainRow $o)
+        {
+                if ($this->final)
+                        throw new OrmException('Cannot add to a finalized %s', __CLASS__);
+
+                $this->rows[] = $o;
+                return $this;
+        }
+
+        /** Make the object immutable **/
+        public function finalize()
+        {
+                $this->final = TRUE;
+                return $this;
+        }
+
+        /** Return all OrmRelationship objects for given alias **/
+        public function rshipByAlias($alias)
+        {
+                $arr = array();
+                foreach ($this->rows as $r)
+                        $arr[] = $r->$alias;
+
+                return $arr;
+        }
+
+        /** Return all OrmClass objects for given alias **/
+        public function classByAlias($alias)
+        {
+                $arr = array();
+                foreach ($this->rows as $r)
+                        $arr[] = $r->$alias();
+
+                return $arr;
+        }
+
+        public function __set($key, $value)
+        {
+                throw new OrmException('Objects of class %S are immutable', __CLASS__);
+        }
+
+        # TODO: consider using this in combination with __get($cmd) to check whether a given class is possible to retrieve
+        public function __isset($alias)
+        {
+                return current($this->rows)->__isset($alias);
+        }
+
+        /*
+        public function __get($alias)
+        {
+                return $this->_classByAlias($alias);
+        }
+
+        public function __call($alias, $args)
+        {
+                return $this->_classByAlias($alias);
+        }
+        */
+
+        /** Wrapper to simplify use; can request objects of a given type this way, so long as they are unique in the chain **/
+        public function __get($cmd)
+        {
+                $class_cmd = 'class';
+
+                if     ($cmd == 'anchored')
+                        return $this->anchored();
+                elseif (strpos($cmd, $class_cmd) === 0)
+                        return $this->byClass(substr($cmd, strlen($class_cmd)));
+        }
+
+        /** A helper to get the anchored OrmClass objects **/
+        public function anchored()
+        {
+                return $this->classByAlias(Orm::alias_anchor);
+        }
+
+        /** A helper to return items by class, so long as the class is unique in the chain **/
+        public function byClass($class)
+        {
+                $arr = array();
+                foreach ($this->rows as $r)
+                        $arr[] = $r->_byClass($class);
+
+                return $arr;
+        }
+
+        #Iteration
+        public function rewind()
+        {
+                reset($this->rows);
+        }
+
+        public function current()
+        {
+                return current($this->rows);
+        }
+
+        public function key()
+        {
+                return key($this->rows);
+        }
+
+        public function next()
+        {
+                return next($this->rows);
+        }
+
+        public function valid()
+        {
+                return $this->current() !== FALSE;
+        }
+        #/Iteration
 }
 
 ?>
