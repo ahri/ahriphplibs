@@ -923,19 +923,31 @@ abstract class Orm
                         $current_table   = self::classToDbName($current_class);
                         /*$current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $current_table, $result_of_sql) : $current_table;*/
 
-                        /*# result increments
+                        # result increments
                         if (!isset($seen_results[$result_of_sql])) {
                                 $seen_results[$result_of_sql] = 0;
                                 $result_of_incremented = sprintf('%s__0', $result_of_sql);
                         } else {
                                 $result_of_incremented = sprintf('%s__%s', $result_of_sql, ++$seen_results[$result_of_sql]);
-                        }*/
-                        $current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $result_of_sql, $current_table) : $current_table;
-                        #$current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", /*$result_of_sql*/$result_of_incremented, $current_table) : $current_table;
+                        }
+                        #$current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", $result_of_sql, $current_table) : $current_table;
+                        $current_alias   = self::isRegisteredClass($name, $current_class)? sprintf("%s__%s", /*$result_of_sql*/$result_of_incremented, $current_table) : $current_table;
                         $linked_table    = self::classToDbName($linked_class);
-                        if ($link)
-                                $linked_alias    = self::isRegisteredClass($name, $linked_class)? sprintf("%s__%s", $link_sql, $linked_table) : $linked_table;
-                                /*$linked_alias    = self::isRegisteredClass($name, $linked_class)? sprintf("%s__%s", $linked_table, $link_sql) : $linked_table;*/
+                        if ($link) {
+                                /*$linked_alias    = self::isRegisteredClass($name, $linked_class)? sprintf("%s__%s", $link_sql, $linked_table) : $linked_table;*/
+
+                                if (self::isRegisteredClass($name, $linked_class)) {
+                                        $i = 0;
+                                        if (isset($seen_results[$link_sql]))
+                                                $i = $seen_results[$link_sql] + 1;
+
+                                        $linked_alias = sprintf("%s__%s__%s", $link_sql, $i, $linked_table);
+                                } else {
+                                        /* TODO: why this split? */
+                                        throw new Exception('why?');
+                                        $linked_alias = $linked_table;
+                                }
+                        }
                         # also: $current_class
                         #       $linked_class
                         #       $link_stored_here
@@ -986,7 +998,7 @@ abstract class Orm
                                         } else if ($dest->class == $result_of) {
                                                 $table = $link_stored_here? $current_alias : $last_alias;
                                                 foreach (self::getProperties($result_of, true) as $var)
-                                                        $select[] = sprintf("%s.%s__var__%s AS %s__%s", $table, $result_of_sql, $var, $result_of_sql, $var);
+                                                        $select[] = sprintf("%s.%s__var__%s AS %s__%s", $table, $result_of_sql, $var, /*$result_of_sql*/$result_of_incremented, $var);
                                         }
                                 }
 
@@ -1062,7 +1074,7 @@ abstract class Orm
 
                 # format the chain to a reasonable string
                 #$chain = preg_replace('#(?<alias>[^ ]+)__(?<class>[^ ]+)#', '(\1) -> \2', implode(' -> ', $chain));
-                $chain = preg_replace_callback('#([^ ]+)__([^ ]+)#', array('self', 'chainFormatCallback'), implode(' -> ', $chain));
+                $chain = preg_replace_callback('#([^ ]+)__([^ ]+)__([^ ]+)#', array('self', 'chainFormatCallback'), implode(' -> ', $chain));
 
                 $o = new OrmSqlComponents($chain);
                 $o->set('SELECT', implode(', ', $select));
@@ -1070,15 +1082,24 @@ abstract class Orm
                 if (sizeof($where) > 0)
                         $o->set('WHERE', implode(' AND ', $where ));
 
+printf("\n\n%s\n\n", SSql::format($o));
                 return $o;
         }
 
         private static final function chainFormatCallback($match)
         {
                 if ($match[1] == self::alias_anchor)
-                        return self::dbToClassName($match[2]);
+                        return self::dbToClassName($match[3]);
 
-                return sprintf('(%s) -> %s', self::dbToClassName($match[1]), self::dbToClassName($match[2]));
+                list(, $relationship, $i, $class) = $match;
+
+                # Taken the possibly contraversial option of refering to arrays in the same way that C does; i.e. *a == a[0], except I also dropped the pointer dereference sugar... good/bad? you decide...
+                if ($i == '0')
+                        $i = '';
+                else
+                        $i = sprintf('[$i]', $i);
+
+                return sprintf('(%s%s) -> %s', self::dbToClassName($relationship), $i, self::dbToClassName($class));
         }
 
         private static final function cmpDests($a, $b)
@@ -1198,14 +1219,11 @@ abstract class Orm
         }
 
         # TODO: work out where to use self::resolveRelationship($name, $class_a, $class_b) -- it's a useful function and will be a nice guard
+        # TODO: seems to be the $key that needs changing to take the $i into account -- probably do something like the current explosion on line 1282
 
         /** Takes an SQL result and converts it into a chain of objects (returning an OrmChainResult) **/
         protected static final function objectsFromResult($name, $result, $chain)
         {
-                #      3 = result_of, class, property
-                #      4 = result_of, relationship, "var", property
-                #      5 = child_result_of, child, "inherits", class, property
-
                 $chain_result = new OrmChainResult(&$chain);
 
                 foreach (SSql::getResultsFor($result) as $row) { # by row
@@ -1214,33 +1232,33 @@ abstract class Orm
 
                         foreach ($row as $key => $val) {         # by col
                                 switch (sizeof($parts = explode('__', $key))) {
-                                        case 2: # result_of, property -- i.e. populate a relationship
-                                                list($r_alias, $r_property) = $parts;
+                                        case 3: # result_of, iterable, property -- i.e. populate a relationship
+                                                list($r_alias, $i, $r_property) = $parts;
                                                 $r_alias        = self::dbToClassName($r_alias);
                                                 $r_property     = self::dbToPropertyName($r_property);
 
-                                                $key = Orm::dbToClassName($r_alias);
+                                                $key = sprintf('%s__%s', Orm::dbToClassName($r_alias), $i);
                                                 if (!isset($row_rship_vars[$key]))
                                                         $row_rship_vars[$key] = array();
 
                                                 $row_rship_vars[$key][$r_property] = $val;
                                                 break;
 
-                                        case 3: # result_of, class, property -- i.e. populate a class
-                                                list($r_alias, $r_class, $r_property) = $parts;
+                                        case 4: # result_of, iterable, class, property -- i.e. populate a class
+                                                list($r_alias, $i, $r_class, $r_property) = $parts;
                                                 $r_class    = self::dbToClassName($r_class);
                                                 $r_alias    = self::dbToClassName($r_alias);
                                                 $r_property = self::dbToPropertyName($r_property);
 
-                                                $key = sprintf('%s__%s', Orm::dbToClassName($r_alias), Orm::dbToClassName($r_class));
+                                                $key = sprintf('%s__%s__%s', Orm::dbToClassName($r_alias), $i, Orm::dbToClassName($r_class));
                                                 if (!isset($row_class_vars[$key]))
                                                         $row_class_vars[$key] = array();
 
                                                 $row_class_vars[$key][$r_property] = $val;
                                                 break;
 
-                                        case 5: # child_result_of, child, "inherits", class, property -- i.e. populate the rest of a class
-                                                list($r_child_alias, $r_child, $inherits_e_inherits, $r_class, $r_property) = $parts;
+                                        case 6: # child_result_of, iterable, child, "inherits", class, property -- i.e. populate the rest of a class
+                                                list($r_child_alias, $i, $r_child, $inherits_e_inherits, $r_class, $r_property) = $parts;
                                                 $r_class             = self::dbToClassName($r_class);
                                                 $inherits_e_inherits = self::dbToClassName($inherits_e_inherits);
                                                 $r_child             = self::dbToClassName($r_child);
@@ -1250,7 +1268,7 @@ abstract class Orm
                                                 if ($inherits_e_inherits != self::relationship_inherits)
                                                         throw new OrmException('Not expecting key of form %s', $key);
 
-                                                $key = sprintf('%s__%s', Orm::dbToClassName($r_child_alias), Orm::dbToClassName($r_child));
+                                                $key = sprintf('%s__%s__%s', Orm::dbToClassName($r_child_alias), $i, Orm::dbToClassName($r_child));
                                                 if (!isset($row_class_vars[$key]))
                                                         $row_class_vars[$key] = array();
 
@@ -1261,7 +1279,7 @@ abstract class Orm
                                                 break;
 
                                         default:
-                                                throw new OrmException('Unexpected key encountered');
+                                                throw new OrmException('Unexpected key encountered: %s', print_r($parts, true));
                                 }
                         }
 
@@ -1269,17 +1287,18 @@ abstract class Orm
                         $row_rship_objs = array();
 
                         foreach ($row_class_vars as $alias__class => $vars) {
-                                list($alias, $class) = explode('__', $alias__class);
+                                list($alias, $i, $class) = explode('__', $alias__class);
                                 if (!self::isRegisteredClass($name, $class))
                                         throw new OrmException('Class %s is not registered for Schema %s', $class, $name);
 
-                                $row_class_objs[$alias] = new $class($vars, $name);
+                                $row_class_objs[sprintf('%s__%s', $alias, $i)] = new $class($vars, $name);
                         }
                         foreach ($row_rship_vars as $relationship => $vars) {
-                                if (!self::isRegisteredIRelationship($name, $relationship))
-                                        throw new OrmException('Relationship %s is not registered or is not instanciable for Schema %s', $relationship, $name);
+                                list($class, $i) = explode('__', $relationship);
+                                if (!self::isRegisteredIRelationship($name, $class))
+                                        throw new OrmException('Relationship %s is not registered or is not instanciable for Schema %s', $class, $name);
 
-                                $row_rship_objs[$alias] = new $alias($vars, $name);
+                                $row_rship_objs[$relationship] = new $class($vars, $name);
                         }
                         $chain_result->add(new OrmChainRow(&$chain, $row_class_objs, $row_rship_objs));
                 }
@@ -1659,20 +1678,22 @@ class OrmChainRow
                 $this->rship = $rship;
         }
 
-        public function _rshipByAlias($alias)
+        public function _rshipByAlias($alias, $i = 0)
         {
-                if (!isset($this->rship[$alias]))
-                        throw new OrmInputException('No alias with the name %s exists', $alias);
+                $key = sprintf('%s__%s', $alias, $i);
+                if (!isset($this->rship[$key]))
+                        throw new OrmInputException('No alias with the name %s exists', $key);
 
-                return $this->rship[$alias];
+                return $this->rship[$key];
         }
 
-        public function _classByAlias($alias)
+        public function _classByAlias($alias, $i = 0)
         {
-                if (!isset($this->class[$alias]))
-                        throw new OrmInputException('No alias with the name %s exists', $alias);
+                $key = sprintf('%s__%s', $alias, $i);
+                if (!isset($this->class[$key]))
+                        throw new OrmInputException('No alias with the name %s exists', $key);
 
-                return $this->class[$alias];
+                return $this->class[$key];
         }
 
         public function __get($alias)
