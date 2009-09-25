@@ -22,7 +22,7 @@
  * Requirements:  PHP 5.2.0+
  *
  *      Methods:  connect         (type, database[, host, port, username,
- *                                 password, name, debug_all])
+ *                                 password, name, debug])
  *                string    escape          (var  [, name])
  *                string    getVar          (query[, name])
  *                string[]  getCol          (query[, name])
@@ -53,7 +53,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  0.11
+ *      Version:  0.12
  *
  *         Date:  2009-08-10
  *
@@ -90,17 +90,19 @@ class SSql
 {
         const default_name = '-';
 
-        private static $debug_all = false;
+        public  static $debug = false;
 
         private static $connection  = NULL;
         private static $connections = array();
 
+        private static $query_history = array();
+
         private function __construct() {}
 
-        public static function connect($type, $database, $host = NULL, $port = NULL, $username = NULL, $password = NULL, $name = NULL, $debug_all = false)
+        public static function connect($type, $database, $host = NULL, $port = NULL, $username = NULL, $password = NULL, $name = NULL, $debug = false)
         {
                 $public_name = $name;
-                self::$debug_all = $debug_all;
+                self::$debug = $debug;
                 self::name($name);
 
                 self::$connections[$name] = new stdClass();
@@ -210,12 +212,6 @@ class SSql
                 self::getConn($name)->output = $output;
         }
 
-        private static function printDebug($func, $str)
-        {
-                if (self::$debug_all)
-                        printf("SSql::debug %s : %s\n", $func, $str);
-        }
-
         private static function throwSqlException($name)
         {
                 $err = '';
@@ -251,7 +247,6 @@ class SSql
         public static function query($query, $name = NULL)
         {
                 self::putInput($query, $name);
-                self::printDebug('query', $query);
                 $c = self::getConn($name);
                 switch(self::getType($name)) {
                         case 'Dummy':
@@ -283,6 +278,35 @@ class SSql
                 }
                 if (!$c->result)
                         self::throwSqlException($name);
+
+                if (self::$debug === TRUE || self::$debug == 1) {
+                        $trace = array();
+                        foreach (debug_backtrace() as $hit) {
+                                $class = '';
+                                if (isset($hit['class']) && !empty($hit['class']))
+                                        $class = sprintf('%s%s', $hit['class'], $hit['type']);
+
+                                $args = array();
+                                foreach ($hit['args'] as $arg) {
+                                        if     ($arg === NULL)
+                                                $args[] = 'NULL';
+                                        elseif ($arg === TRUE)
+                                                $args[] = 'TRUE';
+                                        elseif ($arg === FALSE)
+                                                $args[] = 'FALSE';
+                                        else
+                                                $args[] = (string) $arg;
+                                }
+                                $args = implode(', ', $args);
+
+                                $trace[] = sprintf('%s:%s %s%s(%s)', preg_replace('#^.+/#', '', $hit['file']), $hit['line'], $class, $hit['function'], $args);
+                        }
+
+                        self::$query_history[] = $trace;
+
+                } elseif (self::$debug == 2) {
+                        self::$query_history[] = debug_backtrace();
+                }
 
                 return $c->result;
         }
@@ -599,6 +623,7 @@ class SSql
         # output debug information on the previous input/output
         public static function debug($name = NULL)
         {
+                # TODO
                 # use self::getInput($name) and self::getOuput($name)
         }
 
@@ -694,6 +719,9 @@ class SSql
         # rewind the current result set to the start (for re-iteration)
         public static function rewind($result, $name = NULL)
         {
+                if (self::getNumRows($result, $name) == 0)
+                        return NULL;
+
                 switch(self::getType($name)) {
                         case 'Dummy':
                                 break;
@@ -719,6 +747,11 @@ class SSql
                                 throw new SSqlInputException('Method rewind does not have behaviour specified for DB type %s', self::getType($name));
                 }
                 return NULL;
+        }
+
+        public static function getQueryHistory()
+        {
+                return self::$query_history;
         }
 }
 
