@@ -1,6 +1,6 @@
 <?php
 
-class OrmSqlCache extends Orm
+class OrmSqlCache
 {
         const marker_regex = '/^        ### NEXT FUNCTION MARKER ###$/m';
         const default_name = '_';
@@ -12,7 +12,7 @@ class OrmSqlCache extends Orm
         #      It should have a public static method OrmSqlCache::save() that adds all the current and added SQL together and rewrites its own file
         private static $additions = array();
 
-        protected static function add($hash, $func_args, $func_body, $name = NULL)
+        public static function add($hash, $func_args, $func_body, $name = NULL)
         {
                 $o = (object) array('hash'      => $hash,
                                     'func_args' => $func_args,
@@ -27,14 +27,14 @@ class OrmSqlCache extends Orm
                 self::$additions[] = $o;
         }
 
-        protected static function getRecentlyCachedBody($hash, $name = NULL)
+        public static function getRecentlyCachedBody($hash, $name = NULL)
         {
                 foreach (self::$additions as $addition)
                         if ($hash == $addition->hash && $name == $addition->name)
                                 return $addition->func_body;
         }
 
-        protected static function getFuncName($hash, $name = NULL)
+        public static function getFuncName($hash, $name = NULL)
         {
                 if (Orm::validName(self::default_name))
                         throw new OrmException(sprintf('The Orm name "%s" is valid and must absolutely NOT be!', self::default_name));
@@ -47,10 +47,10 @@ class OrmSqlCache extends Orm
         public static function save()
         {
                 if (($self = file_get_contents(__FILE__)) === FALSE)
-                        throw new OrmException('Could not read file %s, which is weird, because I\'m executing out of it...', __FILE__);
+                        throw new OrmException('Could not read file "%s", which is weird, because I\'m executing out of it...', __FILE__);
 
                 if(!preg_match(self::marker_regex, $self, $m))
-                        throw new OrmException(sprintf('Cannot find Next Function Marker in %s', __FILE__));
+                        throw new OrmException(sprintf('Cannot find Next Function Marker in "%s"', __FILE__));
 
                 $functions = '';
                 while ($addition = array_pop(self::$additions)) {
