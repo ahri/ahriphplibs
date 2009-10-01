@@ -29,10 +29,11 @@
  *                  ->setContent($content)
  *
  *                Node options:
- *                  INLINED    -- do not add linebreaks
- *                  UNINDENTED -- do not indent
- *                  UNSTRIPPED -- do not strip whitespace
- *                  UNESCAPED  -- do not escape HTML characters
+ *                  INLINED          -- do not add linebreaks
+ *                  UNINDENTED       -- do not indent
+ *                  UNSTRIPPED       -- do not strip whitespace
+ *                  UNESCAPED        -- do not escape HTML characters
+ *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
  *                Aggregate Options:
  *                  UNMANGLED: INLINED, UNSTRIPPED
  *                  UNTOUCHED: INLINED, UNSTRIPPED, UNESCAPED
@@ -56,9 +57,9 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  2.02
+ *      Version:  2.03
  *
- *         Date:  2009-07-31
+ *         Date:  2009-09-27
  *
  *      License:  BSD (3 clause, 1999-07-22)
  *
@@ -99,6 +100,7 @@ abstract class NodeCommon
         const UNINDENTED          =  2;
         const UNSTRIPPED          =  4;
         const UNESCAPED           =  8;
+        const NOT_SELF_CLOSING    = 16;
 
         # aggregate options
         const UNMANGLED           =  7;
@@ -169,7 +171,7 @@ class Node extends NodeCommon implements Iterator
         protected function renderLines($indent = 0, $options = 0)
         {
                 $options |= $this->options;
-                $self_closing = (sizeof($this->children) == 0);
+                $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
                 $text = '';
                 $spaces = parent::getSpaces($indent);
 
