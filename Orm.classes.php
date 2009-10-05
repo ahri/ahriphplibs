@@ -496,7 +496,7 @@ abstract class Orm
         {
                 # parse mappings I to O as A
                 $rules = array();
-                foreach (explode("\n", $code) as $line) {
+                foreach (preg_split("#\r?\n#", $code) as $line) {
                         if (!preg_match('#^(?<input>\w+)\s+to\s+(?<output>\w+)\s+as\s+(?<relationship>\w+)(\s+(?<options>.+))?$#', $line, $match))
                                 continue;
 
@@ -1082,7 +1082,8 @@ abstract class Orm
                 if (sizeof($where) > 0)
                         $o->set('WHERE', implode(' AND ', $where ));
 
-printf("\n\n%s\n\n", SSql::format($o));
+                # useful for debugging generated SQL:
+                #printf("\n\n%s\n\n", SSql::format($o));
                 return $o;
         }
 
@@ -1167,6 +1168,7 @@ printf("\n\n%s\n\n", SSql::format($o));
         }
         */
 
+        /* Wrapper around cacheing functions to avoid routing taking place every time */
         public static final function getSql($destinations, $chain = NULL, $name = NULL)
         {
                 # Copy and sort destinations
@@ -1219,7 +1221,6 @@ printf("\n\n%s\n\n", SSql::format($o));
         }
 
         # TODO: work out where to use self::resolveRelationship($name, $class_a, $class_b) -- it's a useful function and will be a nice guard
-        # TODO: seems to be the $key that needs changing to take the $i into account -- probably do something like the current explosion on line 1282
 
         /** Takes an SQL result and converts it into a chain of objects (returning an OrmChainResult) **/
         protected static final function objectsFromResult($name, $result, $chain)
