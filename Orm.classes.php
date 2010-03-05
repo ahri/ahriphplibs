@@ -1411,11 +1411,11 @@ abstract class OrmClass extends Orm
                 new OrmClass($key1,  $key2)
                 new OrmClass($key1,  $key2, $name) **/
 
-        const CONSTR_CMD_UNSAFE_POPULATE = '___CONSTR_CMD_UNSAFE_POPULATE';
-        const CONSTR_CMD_POP_FROM_ARR    = '___CONSTR_CMD_POP_FROM_ARR';
-        const CONSTR_CMD_POP_FROM_OBJ    = '___CONSTR_CMD_POP_FROM_OBJ';
-        const CONSTR_CMD_POP_FROM_DB     = '___CONSTR_CMD_POP_FROM_DB';
-        const CONSTR_CMD_NEW             = '___CONSTR_CMD_NEW';
+        const CONSTR_CMD_POPULATE_SYNCED_ARRAY = '___CONSTR_CMD_POPULATE_SYNCED_ARRAY';
+        const CONSTR_CMD_POP_FROM_ARR          = '___CONSTR_CMD_POP_FROM_ARR';
+        const CONSTR_CMD_POP_FROM_OBJ          = '___CONSTR_CMD_POP_FROM_OBJ';
+        const CONSTR_CMD_POP_FROM_DB           = '___CONSTR_CMD_POP_FROM_DB';
+        const CONSTR_CMD_NEW                   = '___CONSTR_CMD_NEW';
 
 
         /*
@@ -1457,7 +1457,7 @@ abstract class OrmClass extends Orm
 
         private function applyObject(Orm $o)
         {
-                if (!($this instanceof get_class($o)))
+                if (!($this instanceof $o))
                         throw new OrmInputException('Passed object (of type %s) is not a parent of this class (%s)', get_class($o), get_class($this));
 
                 # use reflection, iterate over classes, apply values to this object, apply synced marker according to $o's synced markers
