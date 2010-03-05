@@ -51,7 +51,7 @@
  *
  *                  (note that objects of this class are iterable with foreach,
  *                  but that use of ->removeChild() while looping isn't advised)
- *                
+ *
  *
  * Requirements:  PHP 5.2.0+, ideally 5.3.0+
  *
@@ -271,7 +271,6 @@ class Node extends NodeCommon implements Iterator
 
                 return $n;
         }
- 
 }
 
 class NodeText extends NodeCommon
