@@ -230,7 +230,7 @@ class SSql
                                 $err = sprintf('SQLite Error(%d): %s', $errcode = sqlite_last_error(self::getHandle($name)), sqlite_error_string($errcode));
                                 break;
                         case 'SQLite3':
-                                $err = sprintf('SQLite3 Error(%d): %s', self::getHandle($name)->ultrrorCode, self::getHandle($name)->lastErrorMsg);
+                                $err = sprintf('SQLite3 Error(%d): %s', self::getHandle($name)->lastErrorCode(), self::getHandle($name)->lastErrorMsg());
                                 break;
                         case 'PostgreSQL':
                                 $err = sprintf('PostgreSQL Error: %s', pg_result_error(self::getResult($name)));
