@@ -145,7 +145,10 @@ class CodeListing
         public static function classes()
         {
                 $type = 'Class';
-                $spec = func_get_args();
+                $spec = NULL;
+                if (func_num_args() == 1 && !is_array($spec = func_get_arg(0)))
+                        $spec = func_get_args();
+
                 foreach(self::getReflections($spec, $type) as $c) {
                         if (!$c->isUserDefined())
                                 continue;
@@ -285,7 +288,9 @@ class CodeListing
                 self::drawLine();
                 printf("Functions\n");
                 self::drawLine();
-                $spec = func_get_args();
+                $spec = NULL;
+                if (func_num_args() == 1 && !is_array($spec = func_get_arg(0)))
+                        $spec = func_get_args();
                 $out = array();
                 foreach(self::getReflections($spec, $type) as $f) {
                         if ($comment = $f->getDocComment()) {
