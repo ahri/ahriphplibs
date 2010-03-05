@@ -112,18 +112,22 @@ abstract class Orm
         const ORM_CLASS_RELATIONSHIP = 'OrmRelationship';
 
         private static $schemas = array();
-        private $loaded_from_db = false;
+        private $loaded_from_db = array();
 
-        /** Set the loaded_from_db flag to indicate that this object's contents were populated from the database **/
-        protected function setLoadedFromDb()
+        /** Setting: should Orm generate its own IDs? **/
+        public static $use_guids          = true;
+
+        /** Setting: should Orm manage its own foreign key constraints (including cascading deletes/updated)? **/
+        public static $manage_constraints = true;
+
+        protected function setLoadedFromDb($class)
         {
-                $this->loaded_from_db = true;
+                $this->loaded_from_db[] = $class;
         }
 
-        /** Get the loaded_from_db flag to indicate whether this object's contents were populated from the database **/
-        protected function getLoadedFromDb()
+        protected function getLoadedFromDb($class)
         {
-                return $this->loaded_from_db;
+                return in_array($class, $this->loaded_from_db);
         }
 
         # Start of schema-related stuff
@@ -372,7 +376,7 @@ abstract class Orm
 
                         if (!isset($heirarchy[$source_class]))
                                 $heirarchy[$source_class] = array();
-                        
+
                         $heirarchy[$source_class][] = $property_name;
                 }
                 return $heirarchy;
@@ -457,8 +461,8 @@ abstract class Orm
                 return $db_name;
         }
 
-        # function returns custom keys specified on a per-class basis by CLASSNAME::CLASSNAME_keys
-        # or defaults to array('id')
+        /** function returns custom keys specified on a per-class basis by CLASSNAME::CLASSNAME_keys
+            or defaults to array('id') **/
         public static final function getKeys($class)
         {
                 if (!is_subclass_of($class, __CLASS__))
@@ -479,6 +483,7 @@ abstract class Orm
 
         #################################### SQL Construction ###################
 
+        /** Returns a quoted and suitably escaped variable **/
         public static final function sqlVar($name, $var, $type = NULL)
         {
                 switch ($type) {
@@ -1061,7 +1066,7 @@ abstract class Orm
                                 else
                                         $from[] = $current_alias;
                         }
-                        
+
 
                         # JOIN
                         if ($link) {
@@ -1306,7 +1311,7 @@ abstract class Orm
                                         throw new OrmException('Class %s is not registered for Schema %s', $class, $name);
 
                                 $obj = new $class($vars, $name);
-                                $obj->setLoadedFromDb();
+                                /*$obj->setLoadedFromDb();*/
 
                                 $row_class_objs[sprintf('%s__%s', $alias, $i)] = $obj;
                         }
@@ -1316,7 +1321,8 @@ abstract class Orm
                                         throw new OrmException('Relationship %s is not registered or is not instanciable for Schema %s', $class, $name);
 
                                 $obj = new $class($vars, $name);
-                                $obj->setLoadedFromDb();
+                                /*$obj->setLoadedFromDb();*/
+                                # TODO: WORKING_ON -- this should set each class it's loading
 
                                 $row_rship_objs[$relationship] = $obj;
                         }
@@ -1342,7 +1348,7 @@ abstract class Orm
 
         public function __destruct()
         {
-                $this->save();
+                #$this->save();
         }
 
         abstract public function equals(Orm $that);
@@ -1355,16 +1361,15 @@ abstract class OrmClass extends Orm
         private $ids        = array();
         /*private $synced     = array();*/
 
-        /* ### DEPRECATED
         ### helper functions for array callbacks ###
         private final function sqlKey($key)
         {
-                return SSql::escape(self::propertyToDbName($key), $this->ssql_name);
+                return SSql::escape(self::propertyToDbName($key), self::getSSqlName($this->setup_name));
         }
 
         private final function sqlValue($key)
         {
-                return $this->sqlVar($this->$key, $name);
+                return self::sqlVar($this->setup_name, $this->$key);
         }
 
         private final function sqlKeyValue($key)
@@ -1372,48 +1377,182 @@ abstract class OrmClass extends Orm
                 return sprintf('%s = %s', $this->sqlKey($key), $this->sqlValue($key));
         }
         ### helper functions for array callbacks ###
-        */
 
-        # Can be constructed with the following syntaxes:
-        #       new OrmClass()
-        #       new OrmClass($array)
-        #       new OrmClass($array, $name)
-        #       new OrmClass($key1,  $key2)
-        #       new OrmClass($key1,  $key2, $name)
-        public function __construct()
+        /** Insert a row into the DB **/
+        private function insert($class)
         {
-                # no args = no further setup
-                if (func_num_args() == 0) return;
+                $insert = array();
+                if (Orm::$use_guids) {
+                        # TODO
+                        # generate guid
+                }
 
+                # TODO: parental relationships??????
+
+                $properties = self::getProperties($class);
+                SSql::query(sprintf("INSERT INTO %s (%s) VALUES (%s)",
+                                    self::classToDbName($class),
+                                    implode(', ', array_map(array($this, 'sqlKey'),   $properties)),
+                                    implode(', ', array_map(array($this, 'sqlValue'), $properties))),
+                            self::getSSqlName($this->setup_name)
+                );
+                # WORKING_ON
+
+                if (!Orm::$use_guids) {
+                        # TODO
+                        # get id from db
+                }
+        }
+
+        /** Can be constructed with the following syntaxes:
+                new OrmClass()
+                new OrmClass($array)
+                new OrmClass($array, $name)
+                new OrmClass($key1,  $key2)
+                new OrmClass($key1,  $key2, $name) **/
+
+        const CONSTR_CMD_UNSAFE_POPULATE = '___CONSTR_CMD_UNSAFE_POPULATE';
+        const CONSTR_CMD_POP_FROM_ARR    = '___CONSTR_CMD_POP_FROM_ARR';
+        const CONSTR_CMD_POP_FROM_OBJ    = '___CONSTR_CMD_POP_FROM_OBJ';
+        const CONSTR_CMD_POP_FROM_DB     = '___CONSTR_CMD_POP_FROM_DB';
+        const CONSTR_CMD_NEW             = '___CONSTR_CMD_NEW';
+
+
+        /*
+                populate from db (concerns delegated to other process), do not insert
+                populate from array and insert
+                populate from other object (must be typeof this object, will do it with reflection and will note synced classes, will also populate from arr (2nd arg)) and insert
+                populate from db by keys
+                don't populate from anywhere, just create a new empty row (will only work for auto id)
+        */
+        public function __construct($command = NULL, $name = NULL)
+        {
+                $args = func_get_args();
+
+                switch ($command) {
+                        case self::CONSTR_CMD_POPULATE_SYNCED_ARRAY:
+                        case self::CONSTR_CMD_POP_FROM_ARR:
+                        case self::CONSTR_CMD_POP_FROM_OBJ:
+                        case self::CONSTR_CMD_POP_FROM_DB:
+                        case self::CONSTR_CMD_NEW:
+                                $this->setup_name = $name;
+                                break;
+                }
+
+                switch ($command) {
+                        case self::CONSTR_CMD_POPULATE_SYNCED_ARRAY:
+                                break;
+                        default:
+                                self::constructGuess($args);
+                }
+        }
+
+        private function applyArray($arr)
+        {
+                foreach ($this as $key => $value) {
+                        if (isset($arr[$key]))
+                                $this->$key = $arr[$key];
+                }
+        }
+
+        private function applyObject(Orm $o)
+        {
+                if (!($this instanceof get_class($o)))
+                        throw new OrmInputException('Passed object (of type %s) is not a parent of this class (%s)', get_class($o), get_class($this));
+
+                # use reflection, iterate over classes, apply values to this object, apply synced marker according to $o's synced markers
+                $class_reflection = new ReflectionClass(get_class($o));
+                do {
+                        foreach ($class_reflection->getProperties() as $property_reflection) {
+                                $p_name = $property_reflection->name;
+                                $this->$p_name = $o->$p_name;
+                        }
+
+                        if ($class_reflection->isInstantiable())
+                                $this->setLoadedFromDb = $o->getLoadedFromDb($class_reflection->getName());
+
+                } while (($class_reflection = $class_reflection->getParentClass()) && # get the parent
+                          $class_reflection->getName() != __CLASS__);                 # check that we're not hitting the top
+        }
+
+        private function constructGuess($args)
+        {
                 # use this to work out whether an arg refers to an Orm name
                 $name_specified = 0;
 
-                if (is_array($input = func_get_arg(0))) { # array = new object with initial values
-                        if (func_num_args() == 2)
+                $next_step = NULL;
+
+                if (func_num_args() == 0) { # new blank object => create in DB
+                        $next_step = 'create';
+
+                } elseif (is_array($input = func_get_arg(0))) { # array = new object with initial values => create in DB
+                        if (func_num_args() > 1)
                                 $name_specified = 1;
 
                         foreach($input as $key => $val)
                                 $this->$key = $val;
 
-                } else {                         # keys passed
+                        $next_step = 'create';
+
+                } else { # keys passed => load from DB
                         $keys = self::getKeys(get_class($this));
                         $name_specified = sizeof($keys);
 
                         if (func_num_args() < (sizeof($keys) - 1))
                                 throw new OrmInputException('Not enough keys were passed in');
 
+                        # TODO: no need to do this here; the load() will overwrite them anyway
                         $i = 0;
                         foreach($keys as $key)
                                 $this->$key = func_get_arg($i++);
+
+                        $next_step = 'load';
                 }
 
                 if ($name_specified > 0) {
                         $this->setup_name = func_get_arg($name_specified);
                 }
 
-                # TODO
-                # test that we either have no IDs set, or that we have all IDs set
-                # if ID not specified at this point, generate one (allow for GUIDs here?), create a row, etc.
+                # TODO: refactor this crap
+                switch ($next_step) {
+                        case 'create':
+                                $this->createObjectInDb();
+                                break;
+
+                        case 'load':
+                                $this->loadObjectFromDb();
+                                break;
+
+                        default:
+                                throw new OrmException('Unknown step: %s', self::debugDump($next_step));
+                }
+        }
+
+        private final function createObjectInDb()
+        {
+                # WORKING_ON
+                $class_reflection = new ReflectionClass(get_class($this));
+                do {
+                        # use reflection to SKIP abstract classes
+                        if (!$class_reflection->isInstantiable())
+                                continue;
+
+                        if (!$this->getLoadedFromDb($class_reflection->getName())) {
+                                $this->insert($class_reflection->getName());
+                                break;
+                        }
+
+                } while (($class_reflection = $class_reflection->getParentClass()) && # get the parent
+                          $class_reflection->getName() != __CLASS__);                 # check that we're not hitting the top
+        }
+
+        private final function loadObjectFromDb()
+        {
+                # TODO -- nice and easy, just load based on keys
+                # TODO: would be far preferable to use the objectsFromDestinations() code, possibly by refactoring into another shareable function. this is needed because otherwise we're in object A and OrmClass->load() is generating object B, instead of populating object A
+                # TODO:NOTE01
+                # TODO: must use $this->setLoadedFromDb() per class
+                throw new Exception('TODO');
         }
 
         ### Accessors ###
@@ -1468,10 +1607,7 @@ abstract class OrmClass extends Orm
                         $class = $class_reflection->getName();
                         $properties = self::getProperties($class);
 
-                        # TODO: SQL here
-                        if ($this->getLoadedFromDb()) { # UPDATE
-                        } else { # INSERT
-                        }
+                        # TODO: UPDATE SQL here
 
                 } while (($class_reflection = $class_reflection->getParentClass()) && # get the parent
                           $class_reflection->getName() != self::ORM_CLASS_CLASS);     # check that we're not hitting the top
