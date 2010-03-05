@@ -193,7 +193,7 @@ if       (sizeof($_POST) == 0) {
                         foreach (getDatatypes() as $key => $type) {
                                 $option = $types->option($type, true);
                                 $option->value = $key;
-                                if ($p == Orm::auto_property_id && $key == $id_datatype)
+                                if ($p == Orm::AUTO_PROPERTY_ID && $key == $id_datatype)
                                         $option->selected = 'selected';
                         }
 
@@ -216,7 +216,7 @@ if       (sizeof($_POST) == 0) {
                         $autoinc = $tr->td()->input();
                         $autoinc->type = 'checkbox';
                         $autoinc->name = sprintf('autoinc_%s.%s', $class, $p);
-                        if ($p == Orm::auto_property_id)
+                        if ($p == Orm::AUTO_PROPERTY_ID)
                                 $autoinc->checked = 'checked';
                 }
         }
@@ -262,7 +262,7 @@ if       (sizeof($_POST) == 0) {
                                 $rowMatch = rowMatch($orm_name, $o->parent, $key);
 
                                 $properties[] = sprintf("    %s__key__%s %s%s%s",
-                                                        Orm::classToDbName(Orm::relationship_inherits),
+                                                        Orm::classToDbName(Orm::RELATIONSHIP_INHERITS),
                                                         $rowMatch->name,
                                                         $rowMatch->type,
                                                         $rowMatch->length,
