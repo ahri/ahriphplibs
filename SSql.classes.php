@@ -3,7 +3,7 @@
  *
  *         Name:  SSql - Transparent Singleton SQL Layer
  *
- *    Supported:  Dummy, MySQL, MySQLi, SQLite, SQLite3, PostgreSQL, MSSQL
+ *    Supported:  Dummy, MySQL, MySQLi, SQLite, SQLite3, PostgreSQL, MSSQL, PDO
  *         Note:  !!!!! NEEDS TESTING ON ALL PLATFORMS !!!!!
  *
  *  Description:  I wanted an easy-to-use static DB connector I could tweak to
@@ -142,6 +142,13 @@ class SSql
 
                                 self::$connections[$name]->handle = mssql_connect($host, $username, $password);
                                 break;
+                        case 'PDO':
+                                try {
+                                        self::$connections[$name]->handle = new PDO($database, $username, $password);
+                                } catch (PDOException $e) {
+                                        throw new SSqlException('PDO threw an exception: %s', $e->message);
+                                }
+                                break;
                         default:
                                 throw new SSqlInputException('Type: %s is not in list of supported database types', $type);
                 }
@@ -237,9 +244,16 @@ class SSql
                                 break;
                         case 'MSSQL':
                                 $err = sprintf('MSSQL Error: %s', mssql_get_last_message()); # there doesn't appear to be any way to get the last message for a given result of even handle
+                                break;
+                        case 'PDO':
+                                $err = sprintf('PDO Error(%d): %s', self::getHandle($name)->errorCode(), self::getHandle($name)->errorInfo());
+                                break;
                         default:
                                 throw new SSqlInputException('Method throwSqlException does not have behaviour specified for DB type %s', self::getType($name));
                 }
+
+                if (self::$debug)
+                        $err .= ". DEBUG TRACE:\n" .print_r(self::getQueryHistory(), true);
 
                 throw new SSqlSqlException($err);
         }
@@ -273,11 +287,12 @@ class SSql
                         case 'MSSQL':
                                 $c->result = @mssql_query($query, self::getHandle($name));
                                 break;
+                        case 'PDO':
+                                $c->result = self::getHandle($name)->query($query);
+                                break;
                         default:
                                 throw new SSqlInputException('Method query does not have behaviour specified for DB type %s', self::getType($name));
                 }
-                if (!$c->result)
-                        self::throwSqlException($name);
 
                 if (self::$debug === TRUE || self::$debug == 1) {
                         $trace = array();
@@ -308,6 +323,9 @@ class SSql
                         self::$query_history[] = debug_backtrace();
                 }
 
+                if (!$c->result)
+                        self::throwSqlException($name);
+
                 return $c->result;
         }
 
@@ -328,6 +346,8 @@ class SSql
                                 return pg_escape_string(self::getHandle($name), "$var");
                         case 'MSSQL':
                                 return str_replace(array('\'', "\0"), array('\'\'', '[NULL]'), "$var"); # copied from a comment on php.net by vollmer@ampache.org
+                        case 'PDO':
+                                return self::getHandle($name)->quote($var);
                         default:
                                 throw new SSqlInputException('Method escape does not have behaviour specified for DB type %s', self::getType($name));
                 }
@@ -356,6 +376,10 @@ class SSql
                                 break;
                         case 'MSSQL':
                                 $id = self::getVar('SELECT @@IDENTITY');        # there is no *_insert_id equivalent for MSSQL
+                                break;
+                        case 'PDO':
+                                $id = self::getHandle($name)->lastInsertId();
+                                break;
                         default:
                                 throw new SSqlInputException('Method getInsertId does not have behaviour specified for DB type %s', self::getType($name));
                 }
@@ -390,6 +414,9 @@ class SSql
                         case 'MSSQL':
                                 $rows = @mssql_num_rows($result);
                                 break;
+                        case 'PDO':
+                                $rows = $result->rowCount();
+                                break;
                         default:
                                 throw new SSqlInputException('Method getNumRows does not have behaviour specified for DB type %s', self::getType($name));
                 }
@@ -423,6 +450,9 @@ class SSql
                                 break;
                         case 'MSSQL':
                                 $rows = @mssql_rows_affected($handle);
+                                break;
+                        case 'PDO':
+                                $rows = $result->rowCount();
                                 break;
                         default:
                                 throw new SSqlInputException('Method getAffectedRows does not have behaviour specified for DB type %s', self::getType($name));
@@ -472,6 +502,9 @@ class SSql
                                 $row = mssql_fetch_row($res);
                                 $var = $row? reset($row) : NULL;
                                 break;
+                        case 'PDO':
+                                $var = $res->fetchColumn;
+                                break;
                         default:
                                 throw new SSqlInputException('Method getVar does not have behaviour specified for DB type %s', self::getType($name));
                 }
@@ -516,6 +549,10 @@ class SSql
                                 while ($row = mssql_fetch_row($res))
                                         $col[] = reset($row);
                                 break;
+                        case 'PDO':
+                                while ($column = $res->fetchColumn())
+                                        $col[] = $column;
+                                break;
                         default:
                                 throw new SSqlInputException('Method getCol does not have behaviour specified for DB type %s', self::getType($name));
                 }
@@ -552,6 +589,9 @@ class SSql
                                 break;
                         case 'MSSQL':
                                 $o = mssql_fetch_object($res);
+                                break;
+                        case 'PDO':
+                                $o = $res->fetchObject();
                                 break;
                         default:
                                 throw new SSqlInputException('Method getRow does not have behaviour specified for DB type %s', self::getType($name));
@@ -596,6 +636,10 @@ class SSql
                                 break;
                         case 'MSSQL':
                                 while ($o = mssql_fetch_object($res))
+                                        $array[] = $o;
+                                break;
+                        case 'PDO':
+                                while ($o = $res->fetchObject())
                                         $array[] = $o;
                                 break;
                         default:
