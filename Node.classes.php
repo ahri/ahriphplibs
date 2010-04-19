@@ -35,11 +35,13 @@
  *                  UNESCAPED        -- do not escape HTML characters
  *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
  *                Aggregate Options:
- *                  UNMANGLED: INLINED, UNSTRIPPED
- *                  UNTOUCHED: INLINED, UNSTRIPPED, UNESCAPED
+ *                  UNMANGLED:  INLINED, UNSTRIPPED
+ *                  UNTOUCHED:  INLINED, UNSTRIPPED, UNESCAPED
+ *                  JAVASCRIPT: UNSTRIPPED, UNESCAPED
+ *                  JS_INCLUDE:  NOT_SELF_CLOSING, INLINED
  *
  *                Node
- *                  ->__construct($name, $content = NULL, $options = 0)
+ *                  ->__construct($name, $content = NULL, $options = Node::NORMAL)
  *                  ->__toString()
  *                  ->__call()       -- calls create new child EntityNodes
  *                  ::__callStatic() -- facilitates use of "Node::html()" instead of "new Node('html')", only in PHP 5.3.0+
@@ -96,6 +98,7 @@ class NodeInputException extends NodeException {}
 abstract class NodeCommon
 {
         # options
+        const NORMAL              =  0;
         const INLINED             =  1;
         const UNINDENTED          =  2;
         const UNSTRIPPED          =  4;
@@ -105,11 +108,13 @@ abstract class NodeCommon
         # aggregate options
         const UNMANGLED           =  7;
         const UNTOUCHED           = 15;
+        const JAVASCRIPT          = 12;
+        const JS_INCLUDE          = 17;
 
         public static $indent     = 4;
         public static $pre_indent = 0;
 
-        abstract protected function renderLines($indent = 0, $options = 0);
+        abstract protected function renderLines($indent = 0, $options = Node::NORMAL);
 
         public function __toString()
         {
@@ -129,7 +134,7 @@ class Node extends NodeCommon implements Iterator
         private $options    = 0;
         private $tag        = '';
 
-        public function __construct($tag, $content = NULL, $options = 0)
+        public function __construct($tag, $content = NULL, $options = Node::NORMAL)
         {
                 $this->tag = $tag;
                 if (!is_null($content))
@@ -168,7 +173,7 @@ class Node extends NodeCommon implements Iterator
                 return implode(' ', $strs);
         }
 
-        protected function renderLines($indent = 0, $options = 0)
+        protected function renderLines($indent = 0, $options = Node::NORMAL)
         {
                 $options |= $this->options;
                 $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
@@ -282,7 +287,7 @@ class NodeText extends NodeCommon
                 $this->content = $content;
         }
 
-        protected function renderLines($indent = 0, $options = 0)
+        protected function renderLines($indent = 0, $options = Node::NORMAL)
         {
                 $content = $this->content;
 
@@ -317,7 +322,7 @@ class NodeText extends NodeCommon
                 }
 
                 if (!($options & parent::UNESCAPED)) {
-                        $content =  htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
+                        $content = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
                 }
 
                 return $content;
