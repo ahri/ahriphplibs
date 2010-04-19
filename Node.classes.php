@@ -178,9 +178,11 @@ class Node extends NodeCommon implements Iterator
                 $options |= $this->options;
                 $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
                 $text = '';
-                $spaces = parent::getSpaces($indent);
 
-                $text .= $spaces;
+                if (!($options & parent::INLINED)) {
+                        $spaces = parent::getSpaces($indent);
+                        $text .= $spaces;
+                }
 
                 $text .= sprintf('<%s', $this->tag);
 
@@ -294,7 +296,7 @@ class NodeText extends NodeCommon
                 if (!($options & parent::UNSTRIPPED)) {
                         $content = preg_replace(array('#(^\s+|\s+$)#m',
                                                       '#[ \t\r]+#m'),
-                                                array('',
+                                                array(' ',
                                                       ' '),
                                                 $content);
                 }
