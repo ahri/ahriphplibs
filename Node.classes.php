@@ -281,63 +281,7 @@ class Node extends NodeCommon implements Iterator
 
         static function stripper(Node $node, $input, array $allowed)
         {
-                if (!($input instanceof DOMNode)) {
-                        $d = new DOMDocument();
-                        $d->loadHTML($input);
-                        $input = $d;
-                        unset($d);
-
-                        # hacky, but DOMDocument adds <html><body>blah</body></html> around the given HTML, which I want to skip
-                        $input = $input->childNodes->item(1);
-                        $input = $input->childNodes->item(0);
-                }
-
-                if (!$input->hasChildNodes()) {
-                        return;
-                }
-
-                $allowed_tags = array();
-                $allowed_spec = array();
-                foreach ($allowed as $spec) {
-                        $spec = explode(' ', $spec);
-                        if (!isset($allowed_spec[$spec[0]])) {
-                                $allowed_tags[] = $spec[0];
-                                $allowed_spec[$spec[0]] = array();
-                        }
-
-                        if (isset($spec[1]) && !in_array($spec[1], $allowed_spec[$spec[0]]))
-                                $allowed_spec[$spec[0]][] = $spec[1];
-                }
-
-                foreach ($input->childNodes as $child) {
-                        switch (get_class($child)) {
-                                case 'DOMText':
-                                        $node->addText($child->nodeValue);
-                                        break;
-                                case 'DOMElement':
-                                        $tag = $child->tagName;
-                                        if (in_array($tag, $allowed_tags)) {
-                                                $childnode = $node->$tag();
-
-                                                # iterate over attrs
-                                                if ($child->hasAttributes()) {
-                                                        foreach ($child->attributes as $attr) {
-                                                                $attr_name = $attr->nodeName;
-
-                                                                if (!in_array($attr_name, $allowed_spec[$tag]))
-                                                                        continue;
-
-                                                                $attr_val  = $attr->nodeValue;
-                                                                $childnode->$attr_name = $attr_val;
-                                                        }
-                                                }
-                                                self::stripper($childnode, $child, $allowed);
-                                        } else {
-                                                self::stripper($node, $child, $allowed);
-                                        }
-                                        break;
-                        }
-                }
+                new NodeStrip($node, $input, $allowed);
         }
 }
 
@@ -402,6 +346,76 @@ class NodeText extends NodeCommon
         }
 }
 
+class NodeStrip
+{
+        private $allowed_tags = array();
+        private $allowed_spec = array();
+
+        public function __construct(Node $node, $input, array $allowed)
+        {
+                $d = new DOMDocument();
+                $d->loadHTML($input);
+                $input = $d;
+                unset($d);
+
+                # hacky, but DOMDocument adds <html><body>blah</body></html> around the given HTML, which I want to skip
+                $input = $input->childNodes->item(1);
+                $input = $input->childNodes->item(0);
+
+                # build up the allowed tags and specs
+                foreach ($allowed as $spec) {
+                        $spec = explode(' ', $spec);
+                        if (!isset($this->allowed_spec[$spec[0]])) {
+                                $this->allowed_tags[] = $spec[0];
+                                $this->allowed_spec[$spec[0]] = array();
+                        }
+
+                        if (isset($spec[1]) && !in_array($spec[1], $this->allowed_spec[$spec[0]]))
+                                $this->allowed_spec[$spec[0]][] = $spec[1];
+                }
+
+                $this->stripper($node, $input);
+                unset($this);
+        }
+
+        private function stripper(Node $node, $input)
+        {
+                if (!$input->hasChildNodes()) {
+                        return;
+                }
+
+                foreach ($input->childNodes as $child) {
+                        switch (get_class($child)) {
+                                case 'DOMText':
+                                        $node->addText($child->nodeValue);
+                                        break;
+                                case 'DOMElement':
+                                        $tag = $child->tagName;
+                                        if (in_array($tag, $this->allowed_tags)) {
+                                                $childnode = $node->$tag();
+
+                                                # iterate over attrs
+                                                if ($child->hasAttributes()) {
+                                                        foreach ($child->attributes as $attr) {
+                                                                $attr_name = $attr->nodeName;
+
+                                                                if (!in_array($attr_name, $this->allowed_spec[$tag]))
+                                                                        continue;
+
+                                                                $attr_val  = $attr->nodeValue;
+                                                                $childnode->$attr_name = $attr_val;
+                                                        }
+                                                }
+                                                self::stripper($childnode, $child);
+                                        } else {
+                                                self::stripper($node, $child);
+                                        }
+                                        break;
+                        }
+                }
+        }
+}
+
 /*
 $html = new Node('html');
 $html->title('inlined', true);
@@ -415,6 +429,16 @@ $body->p('   <foo>
 bar
                   baz');
 echo $html;
+*/
+
+/*
+$n = new Node('div', NULL, Node::INLINED);
+$n->id = 'test';
+Node::stripper($n,
+               '<p>The way to <a onClick="alert(\'XSS\');" href="http://google.com/search?q=produce">produce</a> an ampersand (&amp;) in HTML is to type: &amp;amp;<br> -- easy eh?</p>',
+               array('p', 'a href'));
+
+printf("%s\n", $n);
 */
 
 ?>
