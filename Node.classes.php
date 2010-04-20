@@ -173,13 +173,13 @@ class Node extends NodeCommon implements Iterator
                 return implode(' ', $strs);
         }
 
-        protected function renderLines($indent = 0, $options = Node::NORMAL)
+        protected function renderLines($indent = 0, $parent_opts = Node::NORMAL)
         {
-                $options |= $this->options;
+                $options = $parent_opts | $this->options;
                 $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
                 $text = '';
 
-                if (!($options & parent::INLINED)) {
+                if (!($parent_opts & parent::INLINED)) {
                         $spaces = parent::getSpaces($indent);
                         $text .= $spaces;
                 }
