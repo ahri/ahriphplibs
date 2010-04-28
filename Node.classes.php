@@ -35,10 +35,10 @@
  *                  UNESCAPED        -- do not escape HTML characters
  *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
  *                Aggregate Options:
- *                  UNMANGLED:  INLINED, UNSTRIPPED
- *                  UNTOUCHED:  INLINED, UNSTRIPPED, UNESCAPED
- *                  JAVASCRIPT: UNSTRIPPED, UNESCAPED
- *                  JS_INCLUDE:  NOT_SELF_CLOSING, INLINED
+ *                  UNMANGLED:       INLINED, UNSTRIPPED
+ *                  UNTOUCHED:       INLINED, UNSTRIPPED, UNESCAPED
+ *                  SCRIPT_EMBEDDED: UNSTRIPPED, UNESCAPED
+ *                  SCRIPT_INCLUDE:  NOT_SELF_CLOSING, INLINED
  *
  *                Node
  *                  ->__construct($name, $content = NULL, $options = Node::NORMAL)
@@ -59,7 +59,7 @@
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
- *      Version:  2.03
+ *      Version:  2.1
  *
  *         Date:  2009-09-27
  *
@@ -108,8 +108,8 @@ abstract class NodeCommon
         # aggregate options
         const UNMANGLED           =  7;
         const UNTOUCHED           = 15;
-        const JAVASCRIPT          = 12;
-        const JS_INCLUDE          = 17;
+        const SCRIPT_EMBEDDED     = 12;
+        const SCRIPT_INCLUDE      = 17;
 
         public static $indent     = 4;
         public static $pre_indent = 0;
