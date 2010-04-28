@@ -202,7 +202,10 @@ class Node extends NodeCommon implements Iterator
                         if (!($options & parent::INLINED))
                                 $text .= $spaces;
 
-                        $text .= sprintf("</%s>\n", $this->tag);
+                        $text .= sprintf("</%s>", $this->tag);
+
+                        if (!($parent_opts & parent::INLINED))
+                                $text .= "\n";
                 }
 
                 return $text;
