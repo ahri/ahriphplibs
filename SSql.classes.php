@@ -351,7 +351,7 @@ class SSql
                                 $id = 0;
                                 break;
                         case 'MySQL':
-                                $id = @mysql_insert_id(self::getResult($name));
+                                $id = @mysql_insert_id(self::getHandle($name));
                                 break;
                         case 'MySQLi':
                                 $id = self::getHandle($name)->insert_id;
