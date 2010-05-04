@@ -34,7 +34,7 @@
  *                  UNSTRIPPED       -- do not strip whitespace
  *                  UNESCAPED        -- do not escape HTML characters
  *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
- *                  INVISIBLE        -- do not this node (this option does not cascade)
+ *                  INVISIBLE        -- do not output this node (this option does not cascade)
  *                Aggregate Options:
  *                  UNMANGLED:       INLINED, UNSTRIPPED
  *                  UNTOUCHED:       INLINED, UNSTRIPPED, UNESCAPED
