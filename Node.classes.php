@@ -190,7 +190,9 @@ class Node extends NodeCommon implements Iterator
                         $text .= sprintf(' %s', $this->propertiesAsString());
 
                 if ($self_closing) {
-                        $text .= " />\n";
+                        $text .= " />";
+                        if (!($parent_opts & parent::INLINED))
+                                $text .= "\n";
                 } else {
                         $text .= '>';
                         if (!($options & parent::INLINED))
