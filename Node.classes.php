@@ -284,7 +284,7 @@ class Node extends NodeCommon implements Iterator
                 return $n;
         }
 
-        static function stripper(Node $node, $input, array $allowed)
+        static function stripper(Node $node, $input, $allowed = array())
         {
                 new NodeStrip($node, $input, $allowed);
         }
@@ -358,8 +358,16 @@ class NodeStrip
 
         public function __construct(Node $node, $input, array $allowed)
         {
+                if (empty($input))
+                        return;
+
                 $d = new DOMDocument();
-                $d->loadHTML($input);
+                $d->strictErrorChecking = false;
+                try {
+                        $d->loadHTML($input);
+                } catch (Exception $e) {
+                        # not interested in any exceptions raised
+                }
                 $input = $d;
                 unset($d);
 
