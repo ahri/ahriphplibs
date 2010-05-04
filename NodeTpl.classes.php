@@ -21,6 +21,7 @@
  *                ::hook(hook_name[, Node node)
  *                ::content(string hook_name, string format)
  *                ::variable(string var_name[, mixed value])
+ *                ::postProcess(string func_name)
  *                ::output()
  *
  * Requirements:  PHP 5.2.0+, ideally 5.3.0+
@@ -60,6 +61,7 @@ class NodeTpl
         private static $named = array();
         private static $contents = array();
         private static $vars = array();
+        private static $postProcess = array();
 
         private function __construct() {}
 
@@ -91,6 +93,7 @@ class NodeTpl
         public static function output()
         {
                 self::doContents();
+                self::doPostProcess();
                 printf("%s\n%s", self::getHeader(), self::getRoot());
         }
 
@@ -179,6 +182,17 @@ class NodeTpl
                 default:
                         throw new NodeTplException('Function "variable" takes either one or two args');
                 }
+        }
+
+        public static function postProcess($func_name)
+        {
+                self::$postProcess[] = $func_name;
+        }
+
+        private static function doPostProcess()
+        {
+                foreach (self::$postProcess as $func_name)
+                        call_user_func($func_name);
         }
 }
 
