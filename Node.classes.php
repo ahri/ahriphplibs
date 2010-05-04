@@ -34,6 +34,7 @@
  *                  UNSTRIPPED       -- do not strip whitespace
  *                  UNESCAPED        -- do not escape HTML characters
  *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
+ *                  INVISIBLE        -- do not this node (this option does not cascade)
  *                Aggregate Options:
  *                  UNMANGLED:       INLINED, UNSTRIPPED
  *                  UNTOUCHED:       INLINED, UNSTRIPPED, UNESCAPED
@@ -95,6 +96,7 @@ abstract class NodeCommon
         const UNSTRIPPED          =  4;
         const UNESCAPED           =  8;
         const NOT_SELF_CLOSING    = 16;
+        const INVISIBLE           = 32;
 
         # aggregate options
         const UNMANGLED           =  7;
@@ -169,6 +171,13 @@ class Node extends NodeCommon implements Iterator
                 $options = $parent_opts | $this->options;
                 $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
                 $text = '';
+
+                if ($options & parent::INVISIBLE) {
+                        foreach ($this->children as $child)
+                                $text .= $child->renderLines($indent, $options ^ parent::INVISIBLE);
+
+                        return $text;
+                }
 
                 if (!($parent_opts & parent::INLINED)) {
                         $spaces = parent::getSpaces($indent);
