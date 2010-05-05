@@ -336,10 +336,18 @@ class NodeText extends NodeCommon
                 $content = $this->content;
 
                 if (!($options & parent::UNSTRIPPED)) {
-                        $content = preg_replace(array('#(^\s+|\s+$)#m',
-                                                      '#[ \t\r]+#m'),
-                                                array(' ',
-                                                      ' '),
+                        $find = array('#(^\s+|\s+$)#m',
+                                      '#[ \t\r]+#');
+                        $rplc = array(' ',
+                                      ' ');
+
+                        if (!($options & parent::INLINED)) {
+                                $find[] = '#^ +#m';
+                                $rplc[] = '';
+                        }
+
+                        $content = preg_replace($find,
+                                                $rplc,
                                                 $content);
                 }
 
