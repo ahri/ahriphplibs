@@ -205,38 +205,11 @@ class Node extends NodeCommon implements Iterator
                         if (!($options & parent::INLINED))
                                 $text .= "\n";
 
-                        $clutter = array();
-                        $clutter_status = 0;
-                        $clutter_candidate = NULL;
-                        foreach ($this->children as $child) {
-                                switch ($clutter_status) {
-                                case 0:
-                                        if ($child instanceof Node)
-                                                $clutter_status = 1;
-                                        break;
-                                case 1:
-                                        if ($child instanceof NodeText && preg_match('#^\s*$#', $child->getContent())) {
-                                                $clutter_status = 2;
-                                                $clutter_candidate = $child;
-                                        } else {
-                                                $clutter_status = 0;
-                                        }
-                                        break;
-                                case 2:
-                                        if ($child instanceof Node)
-                                                $clutter[] = $clutter_candidate;
-
-                                        $clutter_status = 0;
-                                        break;
-                                }
-                        }
-
                         foreach ($this->children as $child)
-                                if (!in_array($child, $clutter))
-                                        if ($options & Node::RESET_INDENT)
-                                                $text .= $child->renderLines(0, $options ^ Node::RESET_INDENT);
-                                        else
-                                                $text .= $child->renderLines($indent+1, $options);
+                                if ($options & Node::RESET_INDENT)
+                                        $text .= $child->renderLines(0, $options ^ Node::RESET_INDENT);
+                                else
+                                        $text .= $child->renderLines($indent+1, $options);
 
                         if (!($options & parent::INLINED))
                                 $text .= $spaces;
@@ -338,21 +311,16 @@ class NodeText extends NodeCommon
 
         protected function renderLines($indent = 0, $options = Node::NORMAL)
         {
+                if (empty($this->content) || preg_match('#^\s+$#', $this->content))
+                        return '';
+
                 $content = $this->content;
 
                 if (!($options & parent::UNSTRIPPED)) {
-                        $find = array('#(^\s+|\s+$)#m',
-                                      '#[ \t\r]+#');
-                        $rplc = array(' ',
-                                      ' ');
-
-                        if (!($options & parent::INLINED)) {
-                                $find[] = '#^ +#m';
-                                $rplc[] = '';
-                        }
-
-                        $content = preg_replace($find,
-                                                $rplc,
+                        $content = preg_replace(array('#(^\s+|\s+$)#m',
+                                                      '#[ \t\r]+#m'),
+                                                array(' ',
+                                                      ' '),
                                                 $content);
                 }
 
