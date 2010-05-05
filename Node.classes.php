@@ -106,6 +106,7 @@ abstract class NodeCommon
 
         public static $indent     = 4;
         public static $pre_indent = 0;
+        public static $auto_inline = 'a, i, b, strong, em, img'; # delimited by ', '
 
         abstract protected function renderLines($indent = 0, $options = Node::NORMAL);
 
@@ -169,6 +170,10 @@ class Node extends NodeCommon implements Iterator
         protected function renderLines($indent = 0, $parent_opts = Node::NORMAL)
         {
                 $options = $parent_opts | $this->options;
+
+                if (in_array($this->tag, explode(', ', Node::$auto_inline)))
+                        $options |= Node::INLINED;
+
                 $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
                 $text = '';
 
