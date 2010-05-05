@@ -35,6 +35,7 @@
  *                  UNESCAPED        -- do not escape HTML characters
  *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
  *                  INVISIBLE        -- do not output this node (this option does not cascade)
+ *                  RESET_INDENT     -- indents are reset below this node (this option does not cascade)
  *                Aggregate Options:
  *                  UNMANGLED:       INLINED, UNSTRIPPED
  *                  UNTOUCHED:       INLINED, UNSTRIPPED, UNESCAPED
@@ -97,6 +98,7 @@ abstract class NodeCommon
         const UNESCAPED           =  8;
         const NOT_SELF_CLOSING    = 16;
         const INVISIBLE           = 32;
+        const RESET_INDENT        = 64;
 
         # aggregate options
         const UNMANGLED           =  7;
@@ -231,7 +233,10 @@ class Node extends NodeCommon implements Iterator
 
                         foreach ($this->children as $child)
                                 if (!in_array($child, $clutter))
-                                        $text .= $child->renderLines($indent+1, $options);
+                                        if ($options & Node::RESET_INDENT)
+                                                $text .= $child->renderLines(0, $options ^ Node::RESET_INDENT);
+                                        else
+                                                $text .= $child->renderLines($indent+1, $options);
 
                         if (!($options & parent::INLINED))
                                 $text .= $spaces;
