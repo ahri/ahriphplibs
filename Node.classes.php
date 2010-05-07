@@ -298,6 +298,50 @@ class Node extends NodeCommon implements Iterator
         {
                 new NodeStrip($node, $input, $allowed);
         }
+
+        static function test()
+        {
+                require_once('Test.classes.php');
+                echo "--------------------------------------------------------------------------------\n";
+
+                $node = new Node('br');
+                Test::t('Self Closing', array($node, '__toString'), array(), 'return $result == "<br />\n";');
+
+                $node = new Node('div', NULL, Node::NOT_SELF_CLOSING);
+                Test::t('NOT Self Closing', array($node, '__toString'), array(), 'return $result == "<div>\n</div>\n";');
+
+                $node = new Node('p', 'foo');
+                Test::t('Node with text content', array($node, '__toString'), array(), 'return $result == "<p>\n    foo\n</p>\n";');
+
+                $node = new Node('p');
+                $node->addText('some ');
+                $node->span('foo');
+                $node->addText(' here');
+                Test::t('Node with node and text content', array($node, '__toString'), array(), 'return $result == "<p>\n    some\n    <span>\n        foo\n    </span>\n    here\n</p>\n";');
+
+                $node = new Node('span', 'foo', Node::INLINED);
+                Test::t('Inlined Node', array($node, '__toString'), array(), 'return $result == "<span>foo</span>\n";');
+
+                $node = new Node('p');
+                $node->addText('remove');
+                $node->addText('');
+                $node->addText(' ');
+                $node->addText('clutter');
+                Test::t('Ignore whitespace and empty NodeTexts', array($node, '__toString'), array(), 'return $result == "<p>\n    remove\n    clutter\n</p>\n";');
+
+                $node = new Node('pre', NULL, Node::RESET_INDENT);
+                $node->p('foo');
+                Test::t('Reset Indent', array($node, '__toString'), array(), 'return $result == "<pre>\n<p>\n    foo\n</p>\n</pre>\n";');
+
+                $node = new Node('div');
+                $dummy = $node->dummy(NULL, Node::INVISIBLE);
+                $dummy->p('foo');
+                $dummy->p('bar');
+                Test::t('Reset Indent', array($node, '__toString'), array(), 'return $result == "<div>\n    <p>\n        foo\n    </p>\n    <p>\n        bar\n    </p>\n</div>\n";');
+
+                Test::summary();
+                Test::summary('Node');
+        }
 }
 
 class NodeText extends NodeCommon
@@ -325,18 +369,20 @@ class NodeText extends NodeCommon
                 }
 
                 if (!($options & parent::UNINDENTED)) {
+                        $find = array('#(^\s+)|(\s+$)#m', '#^#m');
+                        $rplc = array('', parent::getSpaces($indent));
                         if (!($options & parent::INLINED)) {
-                                $content = preg_replace('#^#m',
-                                                        parent::getSpaces($indent),
+                                $content = preg_replace($find,
+                                                        $rplc,
                                                         $content);
                         } else {
                                 $arr = explode("\n", $content);
-                                $content = $arr[0];
+                                $content = preg_replace('#^\s+#', '', $arr[0]);
                                 $tail = array_slice($arr, 1);
                                 if (sizeof($tail) > 0) {
                                         $content .= "\n";
-                                        $content .= preg_replace('#^#m',
-                                                                 parent::getSpaces($indent),
+                                        $content .= preg_replace($find,
+                                                                 $rplc,
                                                                  implode("\n", $tail));
                                 }
                         }
