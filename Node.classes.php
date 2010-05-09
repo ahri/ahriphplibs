@@ -92,7 +92,7 @@ abstract class NodeCommon
 {
         # options
         const NORMAL              =  0;
-        const INLINE             =  1;
+        const INLINE              =  1;
         const UNINDENTED          =  2;
         const UNSTRIPPED          =  4;
         const UNESCAPED           =  8;
