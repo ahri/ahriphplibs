@@ -216,8 +216,11 @@ class Node extends NodeCommon implements Iterator
 
                         $text .= sprintf("</%s>", $this->tag);
 
+# issue 8: the tag is responsible for its newline, so we either need to tell it that the parent is inlined (this sucks) or pass in some new parent::NO_WS_AFTER thingy
+#          maybe add a param?
                         if (!($parent_opts & parent::INLINED))
                                 $text .= "\n";
+
                 }
 
                 return $text;
@@ -338,6 +341,13 @@ class Node extends NodeCommon implements Iterator
                 $dummy->p('foo');
                 $dummy->p('bar');
                 Test::t('Reset Indent', array($node, '__toString'), array(), 'return $result == "<div>\n    <p>\n        foo\n    </p>\n    <p>\n        bar\n    </p>\n</div>\n";');
+
+                $node = new Node('p');
+                $node->addText('some');
+                $node->span('foo', Node::INLINED);
+                $node->addText('here');
+                Test::t('Node with node (inlined) and text content (no whitespace)', array($node, '__toString'), array(), 'return $result == "<p>\n    some<span>foo</span>here\n</p>\n";');
+echo $node;
 
                 Test::summary();
                 Test::summary('Node');
