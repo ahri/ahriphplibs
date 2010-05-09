@@ -29,7 +29,7 @@
  *                  ->setContent($content)
  *
  *                Node options:
- *                  INLINED          -- do not add linebreaks
+ *                  INLINE           -- do not add linebreaks
  *                  UNINDENTED       -- do not indent
  *                  UNSTRIPPED       -- do not strip whitespace
  *                  UNESCAPED        -- do not escape HTML characters
@@ -37,10 +37,10 @@
  *                  INVISIBLE        -- do not output this node (this option does not cascade)
  *                  RESET_INDENT     -- indents are reset below this node (this option does not cascade)
  *                Aggregate Options:
- *                  UNMANGLED:       INLINED, UNSTRIPPED
- *                  UNTOUCHED:       INLINED, UNSTRIPPED, UNESCAPED
+ *                  UNMANGLED:       INLINE, UNSTRIPPED
+ *                  UNTOUCHED:       INLINE, UNSTRIPPED, UNESCAPED
  *                  SCRIPT_EMBEDDED: UNSTRIPPED, UNESCAPED
- *                  SCRIPT_INCLUDE:  NOT_SELF_CLOSING, INLINED
+ *                  SCRIPT_INCLUDE:  NOT_SELF_CLOSING, INLINE
  *
  *                Node
  *                  ->__construct($name, $content = NULL, $options = Node::NORMAL)
@@ -92,7 +92,7 @@ abstract class NodeCommon
 {
         # options
         const NORMAL              =  0;
-        const INLINED             =  1;
+        const INLINE             =  1;
         const UNINDENTED          =  2;
         const UNSTRIPPED          =  4;
         const UNESCAPED           =  8;
@@ -114,7 +114,7 @@ abstract class NodeCommon
 
         public function __toString()
         {
-                return $this->renderLines();
+                return $this->renderLines()."\n";
         }
 
         protected static function getSpaces($indent)
@@ -137,7 +137,7 @@ class Node extends NodeCommon implements Iterator
                         $this->children[] = new NodeText($content);
 
                 if ($options === TRUE)
-                        $options = parent::INLINED;
+                        $options = Node::INLINE;
 
                 $this->options |= $options;
                 return $this;
@@ -169,58 +169,84 @@ class Node extends NodeCommon implements Iterator
                 return implode(' ', $strs);
         }
 
-        protected function renderLines($indent = 0, $parent_opts = Node::NORMAL)
+        protected function renderLines($indent = 0, $options = Node::NORMAL)
         {
-                $options = $parent_opts | $this->options;
+                $options = $options | $this->options;
 
                 if (in_array($this->tag, explode(', ', Node::$auto_inline)))
-                        $options |= Node::INLINED;
+                        $options |= Node::INLINE;
 
-                $self_closing = ((sizeof($this->children) == 0) && !($options & parent::NOT_SELF_CLOSING));
+                $self_closing = ((sizeof($this->children) == 0) && !($options & Node::NOT_SELF_CLOSING));
                 $text = '';
 
-                if ($options & parent::INVISIBLE) {
+                /*if ($options & Node::INVISIBLE) {
                         foreach ($this->children as $child)
-                                $text .= $child->renderLines($indent, $options ^ parent::INVISIBLE);
+                                $text .= $child->renderLines($indent, $options ^ Node::INVISIBLE);
 
                         return $text;
+                }*/
+
+                if ($options & Node::INVISIBLE)
+                        $indent--;
+
+                if (!($options & Node::INVISIBLE)) {
+                        $text .= sprintf('<%s', $this->tag);
+
+                        if (sizeof($this->properties) > 0)
+                                $text .= sprintf(' %s', $this->propertiesAsString());
                 }
-
-                if (!($parent_opts & parent::INLINED)) {
-                        $spaces = parent::getSpaces($indent);
-                        $text .= $spaces;
-                }
-
-                $text .= sprintf('<%s', $this->tag);
-
-                if (sizeof($this->properties) > 0)
-                        $text .= sprintf(' %s', $this->propertiesAsString());
+                $spaces = parent::getSpaces($indent+1);
 
                 if ($self_closing) {
                         $text .= " />";
-                        if (!($parent_opts & parent::INLINED))
-                                $text .= "\n";
                 } else {
-                        $text .= '>';
-                        if (!($options & parent::INLINED))
-                                $text .= "\n";
+                        $child_opts = $options;
+                        if (!($options & Node::INVISIBLE)) {
+                                $text .= '>';
+                                if (!($options & Node::INLINE))
+                                        $text .= "\n";
+                        } else {
+                                $child_opts ^= Node::INVISIBLE;
+                        }
 
-                        foreach ($this->children as $child)
-                                if ($options & Node::RESET_INDENT)
-                                        $text .= $child->renderLines(0, $options ^ Node::RESET_INDENT);
+                        $count = 0;
+                        $last_child = NULL;
+                        foreach ($this->children as $child) {
+                                if ($child instanceof NodeText && $child->isEmpty())
+                                        continue;
+
+                                $count++;
+
+                                if       ($last_child == NULL             && $child instanceof NodeText) {
+                                        if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
+                                                $text .= $spaces;
+                                } elseif ($last_child == NULL             && $child instanceof Node)     {
+                                        if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
+                                                $text .= $spaces;
+                                } elseif ($last_child instanceof NodeText && $child instanceof NodeText) {
+                                        $text .= ' ';
+                                } elseif ($last_child instanceof Node     && $child instanceof Node)     {
+                                        if (!($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
+                                                $text .= "\n".$spaces;
+                                } elseif ($last_child instanceof Node     && $child instanceof NodeText) {
+                                } elseif ($last_child instanceof NodeText && $child instanceof Node)     {
+                                }
+
+                                if ($child_opts & Node::RESET_INDENT)
+                                        $text .= $child->renderLines(0, $child_opts ^ Node::RESET_INDENT);
                                 else
-                                        $text .= $child->renderLines($indent+1, $options);
+                                        $text .= $child->renderLines($indent+1, $child_opts);
 
-                        if (!($options & parent::INLINED))
-                                $text .= $spaces;
+                                $last_child = $child;
+                        }
 
-                        $text .= sprintf("</%s>", $this->tag);
-
-# issue 8: the tag is responsible for its newline, so we either need to tell it that the parent is inlined (this sucks) or pass in some new parent::NO_WS_AFTER thingy
-#          maybe add a param?
-                        if (!($parent_opts & parent::INLINED))
+                        if (!($options & Node::INLINE) && !($options & Node::INVISIBLE) && $count > 0) {
                                 $text .= "\n";
+                                $text .= parent::getSpaces($indent);
+                        }
 
+                        if (!($options & Node::INVISIBLE))
+                                $text .= sprintf("</%s>", $this->tag);
                 }
 
                 return $text;
@@ -320,9 +346,9 @@ class Node extends NodeCommon implements Iterator
                 $node->addText('some ');
                 $node->span('foo');
                 $node->addText(' here');
-                Test::t('Node with node and text content', array($node, '__toString'), array(), 'return $result == "<p>\n    some\n    <span>\n        foo\n    </span>\n    here\n</p>\n";');
+                Test::t('Node with node and text content', array($node, '__toString'), array(), 'return $result == "<p>\n    some <span>\n        foo\n    </span> here\n</p>\n";');
 
-                $node = new Node('span', 'foo', Node::INLINED);
+                $node = new Node('span', 'foo', Node::INLINE);
                 Test::t('Inlined Node', array($node, '__toString'), array(), 'return $result == "<span>foo</span>\n";');
 
                 $node = new Node('p');
@@ -330,7 +356,7 @@ class Node extends NodeCommon implements Iterator
                 $node->addText('');
                 $node->addText(' ');
                 $node->addText('clutter');
-                Test::t('Ignore whitespace and empty NodeTexts', array($node, '__toString'), array(), 'return $result == "<p>\n    remove\n    clutter\n</p>\n";');
+                Test::t('Ignore whitespace and empty NodeTexts', array($node, '__toString'), array(), 'return $result == "<p>\n    remove clutter\n</p>\n";');
 
                 $node = new Node('pre', NULL, Node::RESET_INDENT);
                 $node->p('foo');
@@ -340,17 +366,18 @@ class Node extends NodeCommon implements Iterator
                 $dummy = $node->dummy(NULL, Node::INVISIBLE);
                 $dummy->p('foo');
                 $dummy->p('bar');
-                Test::t('Reset Indent', array($node, '__toString'), array(), 'return $result == "<div>\n    <p>\n        foo\n    </p>\n    <p>\n        bar\n    </p>\n</div>\n";');
+                Test::t('Invisible node', array($node, '__toString'), array(), 'return $result == "<div>\n    <p>\n        foo\n    </p>\n    <p>\n        bar\n    </p>\n</div>\n";');
 
                 $node = new Node('p');
                 $node->addText('some');
-                $node->span('foo', Node::INLINED);
+                $node->span('foo', Node::INLINE);
                 $node->addText('here');
                 Test::t('Node with node (inlined) and text content (no whitespace)', array($node, '__toString'), array(), 'return $result == "<p>\n    some<span>foo</span>here\n</p>\n";');
-echo $node;
 
                 Test::summary();
                 Test::summary('Node');
+
+                #echo str_replace(' ', '_', $node);
         }
 }
 
@@ -363,48 +390,20 @@ class NodeText extends NodeCommon
                 $this->content = $content;
         }
 
+        public function isEmpty()
+        {
+                return empty($this->content) || preg_match('#^\s+$#', $this->content);
+        }
+
         protected function renderLines($indent = 0, $options = Node::NORMAL)
         {
-                if (empty($this->content) || preg_match('#^\s+$#', $this->content))
-                        return '';
-
                 $content = $this->content;
 
-                if (!($options & parent::UNSTRIPPED)) {
-                        $content = preg_replace(array('#(^\s+|\s+$)#m',
-                                                      '#[ \t\r]+#m'),
-                                                array(' ',
-                                                      ' '),
-                                                $content);
-                }
+                if (!($options & Node::UNSTRIPPED))
+                        $content = preg_replace('#\s+#', ' ', $content);
 
-                if (!($options & parent::UNINDENTED)) {
-                        $find = array('#(^\s+)|(\s+$)#m', '#^#m');
-                        $rplc = array('', parent::getSpaces($indent));
-                        if (!($options & parent::INLINED)) {
-                                $content = preg_replace($find,
-                                                        $rplc,
-                                                        $content);
-                        } else {
-                                $arr = explode("\n", $content);
-                                $content = preg_replace('#^\s+#', '', $arr[0]);
-                                $tail = array_slice($arr, 1);
-                                if (sizeof($tail) > 0) {
-                                        $content .= "\n";
-                                        $content .= preg_replace($find,
-                                                                 $rplc,
-                                                                 implode("\n", $tail));
-                                }
-                        }
-                }
-
-                if (!($options & parent::INLINED)) {
-                        $content = sprintf("%s\n", $content);
-                }
-
-                if (!($options & parent::UNESCAPED)) {
+                if (!($options & Node::UNESCAPED))
                         $content = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
-                }
 
                 return $content;
         }
@@ -514,7 +513,7 @@ echo $html;
 */
 
 /*
-$n = new Node('div', NULL, Node::INLINED);
+$n = new Node('div', NULL, Node::INLINE);
 $n->id = 'test';
 Node::stripper($n,
                '<p>The way to <a onClick="alert(\'XSS\');" href="http://google.com/search?q=produce">produce</a> an ampersand (&amp;) in HTML is to type: &amp;amp;<br> -- easy eh?</p>',
