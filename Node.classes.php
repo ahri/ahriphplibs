@@ -379,6 +379,14 @@ class Node extends NodeCommon implements Iterator
                 $node->addText(' bar');
                 Test::t('Inlined adjoining text elements with whitespace', array($node, '__toString'), array(), 'return $result == "<p>foo bar</p>\n";');
 
+                $node = new Node('script', <<<JS
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+JS
+, Node::SCRIPT_EMBEDDED);
+                $node->type = 'text/javascript';
+                Test::t('Inlined adjoining text elements with whitespace', array($node, '__toString'), array(), 'return $result == "<script type = \"text/javascript\">\n    var gaJsHost = ((\"https:\" == document.location.protocol) ? \"https://ssl.\" : \"http://www.\");\n    document.write(unescape(\"%3Cscript src=\'\" + gaJsHost + \"google-analytics.com/ga.js\' type=\'text/javascript\'%3E%3C/script%3E\"));\n</script>\n";');
+
                 Test::summary();
                 Test::summary('Node');
 
@@ -416,6 +424,18 @@ class NodeText extends NodeCommon
 
                 if (!($options & Node::UNSTRIPPED))
                         $content = preg_replace('#\s+#', ' ', $content);
+
+                if (!($options & Node::INLINE)) {
+                        $arr = explode("\n", $content);
+                        $content = $arr[0];
+                        $tail = array_slice($arr, 1);
+                        if (sizeof($tail) > 0) {
+                                $content .= "\n";
+                                $content .= preg_replace('#^#m',
+                                                         parent::getSpaces($indent),
+                                                         implode("\n", $tail));
+                        }
+                }
 
                 if (!($options & Node::UNESCAPED))
                         $content = htmlspecialchars($content, ENT_QUOTES, 'UTF-8');
@@ -511,30 +531,5 @@ class NodeStrip
                 }
         }
 }
-
-/*
-$html = new Node('html');
-$html->title('inlined', true);
-$body = $html->body();
-$body->pre('this text ought to
-be protected from
-                          </>   screwing around with', true)->class = 'foo';
-$body->br();
-$body->p('<foo>', true);
-$body->p('   <foo>
-bar
-                  baz');
-echo $html;
-*/
-
-/*
-$n = new Node('div', NULL, Node::INLINE);
-$n->id = 'test';
-Node::stripper($n,
-               '<p>The way to <a onClick="alert(\'XSS\');" href="http://google.com/search?q=produce">produce</a> an ampersand (&amp;) in HTML is to type: &amp;amp;<br> -- easy eh?</p>',
-               array('p', 'a href'));
-
-printf("%s\n", $n);
-*/
 
 ?>
