@@ -179,13 +179,6 @@ class Node extends NodeCommon implements Iterator
                 $self_closing = ((sizeof($this->children) == 0) && !($options & Node::NOT_SELF_CLOSING));
                 $text = '';
 
-                /*if ($options & Node::INVISIBLE) {
-                        foreach ($this->children as $child)
-                                $text .= $child->renderLines($indent, $options ^ Node::INVISIBLE);
-
-                        return $text;
-                }*/
-
                 if ($options & Node::INVISIBLE)
                         $indent--;
 
@@ -220,16 +213,20 @@ class Node extends NodeCommon implements Iterator
                                 if       ($last_child == NULL             && $child instanceof NodeText) {
                                         if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
                                                 $text .= $spaces;
+
                                 } elseif ($last_child == NULL             && $child instanceof Node)     {
                                         if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
                                                 $text .= $spaces;
+
                                 } elseif ($last_child instanceof NodeText && $child instanceof NodeText) {
-                                        $text .= ' ';
+                                        if     (!$last_child->hasWhiteSpaceAfter() && !$child->hasWhiteSpaceBefore())
+                                                $text .= ' ';
+                                        elseif ( $last_child->hasWhiteSpaceAfter() &&  $child->hasWhiteSpaceBefore())
+                                                $text = preg_replace('#\s+$#', '', $text);
+
                                 } elseif ($last_child instanceof Node     && $child instanceof Node)     {
                                         if (!($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
                                                 $text .= "\n".$spaces;
-                                } elseif ($last_child instanceof Node     && $child instanceof NodeText) {
-                                } elseif ($last_child instanceof NodeText && $child instanceof Node)     {
                                 }
 
                                 if ($child_opts & Node::RESET_INDENT)
@@ -374,6 +371,14 @@ class Node extends NodeCommon implements Iterator
                 $node->addText('here');
                 Test::t('Node with node (inlined) and text content (no whitespace)', array($node, '__toString'), array(), 'return $result == "<p>\n    some<span>foo</span>here\n</p>\n";');
 
+                $node = new Node('p', 'foo', Node::INLINE);
+                $node->addText('bar');
+                Test::t('Inlined adjoining text elements', array($node, '__toString'), array(), 'return $result == "<p>foo bar</p>\n";');
+
+                $node = new Node('p', 'foo ', Node::INLINE);
+                $node->addText(' bar');
+                Test::t('Inlined adjoining text elements with whitespace', array($node, '__toString'), array(), 'return $result == "<p>foo bar</p>\n";');
+
                 Test::summary();
                 Test::summary('Node');
 
@@ -393,6 +398,16 @@ class NodeText extends NodeCommon
         public function isEmpty()
         {
                 return empty($this->content) || preg_match('#^\s+$#', $this->content);
+        }
+
+        public function hasWhiteSpaceBefore()
+        {
+                return preg_match('#^\s#', $this->content);
+        }
+
+        public function hasWhiteSpaceAfter()
+        {
+                return preg_match('#\s$#', $this->content);
         }
 
         protected function renderLines($indent = 0, $options = Node::NORMAL)
