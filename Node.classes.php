@@ -194,16 +194,15 @@ class Node extends NodeCommon implements Iterator
                         $text .= " />";
                 } else {
                         $child_opts = $options;
-                        if (!($options & Node::INVISIBLE)) {
-                                $text .= '>';
-                                if (!($options & Node::INLINE))
-                                        $text .= "\n";
-                        } else {
-                                $child_opts ^= Node::INVISIBLE;
-                        }
 
-                        $count = 0;
+                        if (!($options & Node::INVISIBLE))
+                                $text .= '>';
+                        else
+                                $child_opts ^= Node::INVISIBLE;
+
+                        $count = 0; # count of how many child Nodes are actually output
                         $last_child = NULL;
+                        $buffer = '';
                         foreach ($this->children as $child) {
                                 if ($child instanceof NodeText && $child->isEmpty())
                                         continue;
@@ -212,34 +211,42 @@ class Node extends NodeCommon implements Iterator
 
                                 if       ($last_child == NULL             && $child instanceof NodeText) {
                                         if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
-                                                $text .= $spaces;
+                                                $buffer .= $spaces;
 
                                 } elseif ($last_child == NULL             && $child instanceof Node)     {
                                         if (!($options & Node::INVISIBLE) && !($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
-                                                $text .= $spaces;
+                                                $buffer .= $spaces;
 
                                 } elseif ($last_child instanceof NodeText && $child instanceof NodeText) {
                                         if     (!$last_child->hasWhiteSpaceAfter() && !$child->hasWhiteSpaceBefore())
-                                                $text .= ' ';
+                                                $buffer .= ' ';
                                         elseif ( $last_child->hasWhiteSpaceAfter() &&  $child->hasWhiteSpaceBefore())
-                                                $text = preg_replace('#\s+$#', '', $text);
+                                                $buffer = preg_replace('#\s+$#', '', $buffer);
 
                                 } elseif ($last_child instanceof Node     && $child instanceof Node)     {
                                         if (!($child_opts & Node::INLINE) && !($child_opts & Node::RESET_INDENT))
-                                                $text .= "\n".$spaces;
+                                                $buffer .= "\n".$spaces;
                                 }
 
                                 if ($child_opts & Node::RESET_INDENT)
-                                        $text .= $child->renderLines(0, $child_opts ^ Node::RESET_INDENT);
+                                        $buffer .= $child->renderLines(0, $child_opts ^ Node::RESET_INDENT);
                                 else
-                                        $text .= $child->renderLines($indent+1, $child_opts);
+                                        $buffer .= $child->renderLines($indent+1, $child_opts);
 
                                 $last_child = $child;
                         }
 
-                        if (!($options & Node::INLINE) && !($options & Node::INVISIBLE) && $count > 0) {
-                                $text .= "\n";
-                                $text .= parent::getSpaces($indent);
+                        if ($count > 0) {
+                                if(!($options & Node::INLINE) && !($options & Node::INVISIBLE)) {
+                                        $text .= "\n";
+                                }
+
+                                $text .= $buffer;
+
+                                if(!($options & Node::INLINE) && !($options & Node::INVISIBLE)) {
+                                        $text .= "\n";
+                                        $text .= parent::getSpaces($indent);
+                                }
                         }
 
                         if (!($options & Node::INVISIBLE))
@@ -334,7 +341,7 @@ class Node extends NodeCommon implements Iterator
                 Test::t('Self Closing', array($node, '__toString'), array(), 'return $result == "<br />\n";');
 
                 $node = new Node('div', NULL, Node::NOT_SELF_CLOSING);
-                Test::t('NOT Self Closing', array($node, '__toString'), array(), 'return $result == "<div>\n</div>\n";');
+                Test::t('NOT Self Closing', array($node, '__toString'), array(), 'return $result == "<div></div>\n";');
 
                 $node = new Node('p', 'foo');
                 Test::t('Node with text content', array($node, '__toString'), array(), 'return $result == "<p>\n    foo\n</p>\n";');
@@ -385,7 +392,11 @@ document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.
 JS
 , Node::SCRIPT_EMBEDDED);
                 $node->type = 'text/javascript';
-                Test::t('Inlined adjoining text elements with whitespace', array($node, '__toString'), array(), 'return $result == "<script type = \"text/javascript\">\n    var gaJsHost = ((\"https:\" == document.location.protocol) ? \"https://ssl.\" : \"http://www.\");\n    document.write(unescape(\"%3Cscript src=\'\" + gaJsHost + \"google-analytics.com/ga.js\' type=\'text/javascript\'%3E%3C/script%3E\"));\n</script>\n";');
+                Test::t('Javascript with newlines', array($node, '__toString'), array(), 'return $result == "<script type = \"text/javascript\">\n    var gaJsHost = ((\"https:\" == document.location.protocol) ? \"https://ssl.\" : \"http://www.\");\n    document.write(unescape(\"%3Cscript src=\'\" + gaJsHost + \"google-analytics.com/ga.js\' type=\'text/javascript\'%3E%3C/script%3E\"));\n</script>\n";');
+
+                $node = new Node('div');
+                $node->div(NULL, Node::NOT_SELF_CLOSING);
+                Test::t('Nested empty Nodes with an internal NOT_SELF_CLOSING Node', array($node, '__toString'), array(), 'return $result == "<div>\n    <div></div>\n</div>\n";');
 
                 Test::summary();
                 Test::summary('Node');
