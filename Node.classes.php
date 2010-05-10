@@ -236,6 +236,9 @@ class Node extends NodeCommon implements Iterator
                                 $last_child = $child;
                         }
 
+                        # remove extraneous whitespace
+                        $buffer = preg_replace('#\s+$#m', '', $buffer);
+
                         if ($count > 0) {
                                 if(!($options & Node::INLINE) && !($options & Node::INVISIBLE)) {
                                         $text .= "\n";
@@ -397,6 +400,10 @@ JS
                 $node = new Node('div');
                 $node->div(NULL, Node::NOT_SELF_CLOSING);
                 Test::t('Nested empty Nodes with an internal NOT_SELF_CLOSING Node', array($node, '__toString'), array(), 'return $result == "<div>\n    <div></div>\n</div>\n";');
+
+                $node = new Node('span', 'foo ');
+                Test::t('Stripping of useless whitespace after NodeText', array($node, '__toString'), array(), 'return $result == "<span>\n    foo\n</span>\n";');
+
 
                 Test::summary();
                 Test::summary('Node');
