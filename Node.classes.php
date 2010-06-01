@@ -330,6 +330,11 @@ class Node extends NodeCommon implements Iterator
                 return $n;
         }
 
+        public function removeChildren()
+        {
+                $this->children = array();
+        }
+
         static function stripper(Node $node, $input, $allowed = array())
         {
                 new NodeStrip($node, $input, $allowed);
@@ -404,6 +409,11 @@ JS
                 $node = new Node('span', 'foo ');
                 Test::t('Stripping of useless whitespace after NodeText', array($node, '__toString'), array(), 'return $result == "<span>\n    foo\n</span>\n";');
 
+                $node = new Node('div');
+                $node->p();
+                $node->p();
+                $node->removeChildren();
+                Test::t('Child node removal', array($node, '__toString'), array(), 'return $result == "<div />\n";');
 
                 Test::summary();
                 Test::summary('Node');
