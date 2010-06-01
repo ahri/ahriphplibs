@@ -108,7 +108,7 @@ abstract class NodeCommon
 
         public static $indent     = 4;
         public static $pre_indent = 0;
-        public static $auto_inline = 'a, i, b, strong, em, img'; # delimited by ', '
+        public static $auto_inline = 'a, i, b, strong, em, img, p'; # delimited by ', '
 
         abstract protected function renderLines($indent = 0, $options = Node::NORMAL);
 
