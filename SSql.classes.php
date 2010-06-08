@@ -251,6 +251,9 @@ class SSql
 
         public static function query($query, $name = NULL)
         {
+/*$f=fopen('sql.log', 'a');
+fprintf($f, "%s\n", $query);
+fclose($f);*/
                 self::putInput($query, $name);
                 $c = self::getConn($name);
                 switch(self::getType($name)) {
@@ -305,7 +308,7 @@ class SSql
                                 }
                                 $args = implode(', ', $args);
 
-                                $trace[] = sprintf('%s:%s %s%s(%s)', preg_replace('#^.+/#', '', $hit['file']), $hit['line'], $class, $hit['function'], $args);
+                                $trace[] = sprintf('%s:%s %s%s(%s)', isset($hit['file'])? preg_replace('#^.+/#', '', $hit['file']) : '[no_file]', isset($hit['line'])? $hit['line'] : '[no_line]', $class, $hit['function'], $args);
                         }
 
                         self::$query_history[] = $trace;
