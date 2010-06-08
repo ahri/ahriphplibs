@@ -338,11 +338,34 @@ class Node extends NodeCommon implements Iterator
                 $this->children = array();
         }
 
-        static function stripper(Node $node, $input, $allowed = array())
+        /**
+        Use ::stripperHtml after getting an HTML file
+        **/
+        static function stripperHtmlFile(Node $node, $file, $allowed = array(), $replacements = array())
         {
-                new NodeStrip($node, $input, $allowed);
+                self::stripperHtml($node, file_get_contents($file), $allowed, $replacements);
         }
 
+
+        /**
+        Use ::stripper after getting the <body> content out of an HTML document
+        **/
+        static function stripperHtml(Node $node, $html, $allowed = array(), $replacements = array())
+        {
+               self::stripper($node, preg_replace('#.*<body>(.*)</body>.*#is', '\\1', $html), $allowed, $replacements);
+        }
+
+        /**
+        Strip out any unspecified tags (and attrs) from a string of HTML and append to a given Node
+        **/
+        static function stripper(Node $node, $input, $allowed = array(), $replacements = array())
+        {
+                new NodeStrip($node, $input, $allowed, $replacements);
+        }
+
+        /**
+        Unit test Node classes
+        **/
         static function test()
         {
                 require_once('Test.classes.php');
@@ -487,10 +510,12 @@ class NodeText extends NodeCommon
 
 class NodeStrip
 {
+        private $all_allowed = false;
         private $allowed_tags = array();
         private $allowed_spec = array();
+        private $replacements = array();
 
-        public function __construct(Node $node, $input, array $allowed)
+        public function __construct(Node $node, $input, $allowed, array $replacements)
         {
                 if (empty($input))
                         return;
@@ -509,18 +534,23 @@ class NodeStrip
                 $input = $input->childNodes->item(1);
                 $input = $input->childNodes->item(0);
 
-                # build up the allowed tags and specs
-                foreach ($allowed as $spec) {
-                        $spec = explode(' ', $spec);
-                        if (!isset($this->allowed_spec[$spec[0]])) {
-                                $this->allowed_tags[] = $spec[0];
-                                $this->allowed_spec[$spec[0]] = array();
-                        }
+                if (is_string($allowed) && $allowed == '*')
+                        $this->all_allowed = true;
+                else {
+                        # build up the allowed tags and specs
+                        foreach ($allowed as $spec) {
+                                $spec = explode(' ', $spec);
+                                if (!isset($this->allowed_spec[$spec[0]])) {
+                                        $this->allowed_tags[] = $spec[0];
+                                        $this->allowed_spec[$spec[0]] = array();
+                                }
 
-                        if (isset($spec[1]) && !in_array($spec[1], $this->allowed_spec[$spec[0]]))
-                                $this->allowed_spec[$spec[0]][] = $spec[1];
+                                if (isset($spec[1]) && !in_array($spec[1], $this->allowed_spec[$spec[0]]))
+                                        $this->allowed_spec[$spec[0]][] = $spec[1];
+                        }
                 }
 
+                $this->replacements = $replacements;
                 $this->stripper($node, $input);
                 unset($this);
         }
@@ -538,7 +568,12 @@ class NodeStrip
                                         break;
                                 case 'DOMElement':
                                         $tag = $child->tagName;
-                                        if (in_array($tag, $this->allowed_tags)) {
+
+                                        # replace if required
+                                        if (isset($this->replacements[$tag]))
+                                                $tag = $this->replacements[$tag];
+
+                                        if ($this->all_allowed || in_array($tag, $this->allowed_tags)) {
                                                 $childnode = $node->$tag();
 
                                                 # iterate over attrs
@@ -546,7 +581,7 @@ class NodeStrip
                                                         foreach ($child->attributes as $attr) {
                                                                 $attr_name = $attr->nodeName;
 
-                                                                if (!in_array($attr_name, $this->allowed_spec[$tag]))
+                                                                if (!$this->all_allowed && !in_array($attr_name, $this->allowed_spec[$tag]))
                                                                         continue;
 
                                                                 $attr_val  = $attr->nodeValue;
