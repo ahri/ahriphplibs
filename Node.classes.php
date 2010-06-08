@@ -33,7 +33,7 @@
  *                  UNINDENTED       -- do not indent
  *                  UNSTRIPPED       -- do not strip whitespace
  *                  UNESCAPED        -- do not escape HTML characters
- *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div>
+ *                  NOT_SELF_CLOSING -- do not self-close: <div /> will become <div></div> (this option does not cascade)
  *                  INVISIBLE        -- do not output this node (this option does not cascade)
  *                  RESET_INDENT     -- indents are reset below this node (this option does not cascade)
  *                Aggregate Options:
@@ -194,6 +194,9 @@ class Node extends NodeCommon implements Iterator
                         $text .= " />";
                 } else {
                         $child_opts = $options;
+
+                        if ($options & Node::NOT_SELF_CLOSING)
+                                $child_opts ^= Node::NOT_SELF_CLOSING;
 
                         if (!($options & Node::INVISIBLE))
                                 $text .= '>';
