@@ -173,7 +173,7 @@ class Node extends NodeCommon implements Iterator
         {
                 $options = $options | $this->options;
 
-                if (in_array($this->tag, explode(', ', Node::$auto_inline)))
+                if (in_array($this->tag, explode(', ', Node::$auto_inline), true))
                         $options |= Node::INLINE;
 
                 $self_closing = ((sizeof($this->children) == 0) && !($options & Node::NOT_SELF_CLOSING));
@@ -553,7 +553,7 @@ class NodeStrip
                                         $this->allowed_spec[$spec[0]] = array();
                                 }
 
-                                if (isset($spec[1]) && !in_array($spec[1], $this->allowed_spec[$spec[0]]))
+                                if (isset($spec[1]) && !in_array($spec[1], $this->allowed_spec[$spec[0]], true))
                                         $this->allowed_spec[$spec[0]][] = $spec[1];
                         }
                 }
@@ -581,7 +581,7 @@ class NodeStrip
                                         if (isset($this->replacements[$tag]))
                                                 $tag = $this->replacements[$tag];
 
-                                        if ($this->all_allowed || in_array($tag, $this->allowed_tags)) {
+                                        if ($this->all_allowed || in_array($tag, $this->allowed_tags, true)) {
                                                 $childnode = $node->$tag();
 
                                                 # iterate over attrs
@@ -589,7 +589,7 @@ class NodeStrip
                                                         foreach ($child->attributes as $attr) {
                                                                 $attr_name = $attr->nodeName;
 
-                                                                if (!$this->all_allowed && !in_array($attr_name, $this->allowed_spec[$tag]))
+                                                                if (!$this->all_allowed && !in_array($attr_name, $this->allowed_spec[$tag], true))
                                                                         continue;
 
                                                                 $attr_val  = $attr->nodeValue;
