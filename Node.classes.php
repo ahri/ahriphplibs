@@ -338,6 +338,14 @@ class Node extends NodeCommon implements Iterator
                 $this->children = array();
         }
 
+        public function _tag($val = NULL)
+        {
+                if ($val)
+                        $this->tag = $val;
+                else
+                        return $this->tag;
+        }
+
         /**
         Use ::stripperHtml after getting an HTML file
         **/
