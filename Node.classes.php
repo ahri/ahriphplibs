@@ -11,6 +11,10 @@
  *                seemed wise, and we have some child addition/removal to boot.
  *                Yay!
  *
+ *         Note:  Case is never messed with (since XML is case sensitive),
+ *                however for the stripper() functions HTML is ALL converted to
+ *                _lower_ case: this includes both element and attribute names.
+ *
  *         Help:  $html = new Node('html');
  *                # or in PHP 5.3.0:
  *                # $html = Node::html();
@@ -575,7 +579,7 @@ class NodeStrip
                                         $node->addText($child->nodeValue);
                                         break;
                                 case 'DOMElement':
-                                        $tag = $child->tagName;
+                                        $tag = strtolower($child->tagName);
 
                                         # replace if required
                                         if (isset($this->replacements[$tag]))
@@ -587,7 +591,7 @@ class NodeStrip
                                                 # iterate over attrs
                                                 if ($child->hasAttributes()) {
                                                         foreach ($child->attributes as $attr) {
-                                                                $attr_name = $attr->nodeName;
+                                                                $attr_name = strtolower($attr->nodeName);
 
                                                                 if (!$this->all_allowed && !in_array($attr_name, $this->allowed_spec[$tag], true))
                                                                         continue;
