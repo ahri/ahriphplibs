@@ -122,8 +122,10 @@ class NodeTpl
                         throw new NodeTplException('No var named "%s" exists', $name);
         }
 
-        /** Assign or retrieve a named Node (a hook into the Node structure),
-            uses jQuery-style guessing of meaning of args **/
+        /**
+        Assign or retrieve a named Node (a hook into the Node structure),
+        uses jQuery-style guessing of meaning of args
+        **/
         public static function hook()
         {
                 $args = func_get_args();
@@ -139,8 +141,10 @@ class NodeTpl
                 }
         }
 
-        /** Specify the content for a text node to be added to the given hook,
-            variables in the form {var_name} **/
+        /**
+        Specify the content for a text node to be added to the given hook,
+        variables in the form {var_name}
+        **/
         public static function content($hook, $format)
         {
                 self::hookCheck($hook);
@@ -167,8 +171,10 @@ class NodeTpl
                 return $var;
         }
 
-        /** Assign or retrieve a template variable,
-            jQuery-style guessing of the meaning of args **/
+        /**
+        Assign or retrieve a template variable,
+        jQuery-style guessing of the meaning of args
+        **/
         public static function variable($name)
         {
                 switch(func_num_args()) {
