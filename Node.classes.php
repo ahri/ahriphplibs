@@ -91,24 +91,24 @@ class NodeInputException extends NodeException {}
 abstract class NodeCommon
 {
         # options
-        const NORMAL              =  0;
-        const INLINE              =  1;
-        const UNINDENTED          =  2;
-        const UNSTRIPPED          =  4;
-        const UNESCAPED           =  8;
-        const NOT_SELF_CLOSING    = 16;
-        const INVISIBLE           = 32;
-        const RESET_INDENT        = 64;
+        const NORMAL               =  0;
+        const INLINE               =  1;
+        const UNINDENTED           =  2;
+        const UNSTRIPPED           =  4;
+        const UNESCAPED            =  8;
+        const NOT_SELF_CLOSING     = 16;
+        const INVISIBLE            = 32;
+        const RESET_INDENT         = 64;
 
         # aggregate options
-        const UNMANGLED           =  7;
-        const UNTOUCHED           = 15;
-        const SCRIPT_EMBEDDED     = 12;
-        const SCRIPT_INCLUDE      = 17;
+        const UNMANGLED            =  7;
+        const UNTOUCHED            = 15;
+        const SCRIPT_EMBEDDED      = 12;
+        const SCRIPT_INCLUDE       = 17;
 
-        public static $indent     = 4;
-        public static $pre_indent = 0;
-        public static $auto_inline = 'a, i, b, strong, em, img, p'; # delimited by ', '
+        public static $indent      =  4;
+        public static $pre_indent  =  0;
+        public static $auto_inline = 'a, i, b, strong, em, img, p, h1, h2, h3, h4, h5, h6, pre'; # delimited by ', '
 
         abstract protected function renderLines($indent = 0, $options = Node::NORMAL);
 
