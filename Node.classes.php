@@ -113,6 +113,7 @@ abstract class NodeCommon
         public static $indent      =  4;
         public static $pre_indent  =  0;
         public static $auto_inline = 'a, i, b, strong, em, img, p, h1, h2, h3, h4, h5, h6, pre'; # delimited by ', '
+        public static $auto_not_self_closing = 'div, script, h1, h2, h3, h4, h5, h6';
 
         abstract protected function renderLines($indent = 0, $options = Node::NORMAL);
 
@@ -179,6 +180,9 @@ class Node extends NodeCommon implements Iterator
 
                 if (in_array($this->tag, explode(', ', Node::$auto_inline), true))
                         $options |= Node::INLINE;
+
+                if (in_array($this->tag, explode(', ', Node::$auto_not_self_closing), true))
+                        $options |= Node::NOT_SELF_CLOSING;
 
                 $self_closing = ((sizeof($this->children) == 0) && !($options & Node::NOT_SELF_CLOSING));
                 $text = '';
