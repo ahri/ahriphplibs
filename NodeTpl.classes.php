@@ -55,6 +55,7 @@ class NodeTplException extends SPFException {}
 
 class NodeTpl
 {
+        const HOOK_NAME_PROPERTY = 'tplhook';
         private static $root = NULL;
         private static $header = '<!DOCTYPE HTML>';
         private static $named = array();
@@ -200,6 +201,35 @@ class NodeTpl
         {
                 foreach (self::$postProcess as $func_name)
                         call_user_func($func_name);
+        }
+
+        public static function nodeRecurse(Node $root, $func, &$seen = array())
+        {
+                foreach ($root as $node) {
+                        $func($node);
+
+                        if ($node instanceof Node && !in_array($node, $seen, true)) {
+                                $seen[] = $node;
+                                self::nodeRecurse($node, $func, $seen);
+                        }
+                }
+        }
+
+        public static function hookConvert()
+        {
+                $hook_name_property = self::HOOK_NAME_PROPERTY;
+
+                # parse the tree for hooks (specified in self::HOOK_NAME_PROPERTY)
+                self::nodeRecurse(self::$root, function ($node) use ($hook_name_property) {
+                        if (!($node instanceof Node))
+                                return;
+
+                        if (!isset($node->$hook_name_property))
+                                return;
+
+                        NodeTpl::hook($node->$hook_name_property, $node);
+                        unset($node->$hook_name_property);
+                });
         }
 }
 
