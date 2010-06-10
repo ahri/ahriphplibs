@@ -16,21 +16,20 @@
  *                NodeTpl::output();
  *
  *      Methods:  NodeTpl
- *                ::setRoot(Node root_node)
- *                ::getRoot()
+ *                ::root([Node node])
  *                ::hook(hook_name[, Node node)
  *                ::content(string hook_name, string format)
  *                ::variable(string var_name[, mixed value])
  *                ::postProcess(string func_name)
  *                ::output()
  *
- * Requirements:  PHP 5.2.0+, ideally 5.3.0+
+ * Requirements:  PHP 5.3.0+
  *
  *       Author:  Adam Piper (adamp@ahri.net)
  *
  *      Version:  0.1
  *
- *         Date:  2009-04-28
+ *         Date:  2010-04-28
  *
  *      License:  AGPL (GNU AFFERO GENERAL PUBLIC LICENSE Version 3, 2007-11-19)
  *
@@ -65,16 +64,18 @@ class NodeTpl
 
         private function __construct() {}
 
-        /** Set the root node **/
-        public static function setRoot(Node $root)
+        /** Set/Get the root node **/
+        public static function root($root = NULL)
         {
-                self::$root = $root;
-        }
+                if ($root) {
+                        if (!($root instanceof Node))
+                                throw new NodeTplException('Must pass a Node object as root');
 
-        /** Get the root node **/
-        public static function getRoot()
-        {
-                return self::$root;
+                        self::$root = $root;
+
+                } else {
+                        return self::$root;
+                }
         }
 
         /** Set the header for the template (e.g. HTML5 or XML namespace declaration) **/
@@ -94,7 +95,7 @@ class NodeTpl
         {
                 self::doContents();
                 self::doPostProcess();
-                printf("%s\n%s", self::getHeader(), self::getRoot());
+                printf("%s\n%s", self::getHeader(), self::root());
         }
 
         /** Set a named node **/
@@ -113,7 +114,7 @@ class NodeTpl
         private static function hookCheck($name)
         {
                 if (!isset(self::$named[$name]))
-                        throw new NodeTplException('No node named "%s" exists', $name);
+                        throw new NodeTplException('No hook named "%s" exists', $name);
         }
 
         private static function varCheck($name)
