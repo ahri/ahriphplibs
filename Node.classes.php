@@ -288,6 +288,11 @@ class Node extends NodeCommon implements Iterator
                 return isset($this->properties[$property]);
         }
 
+        public function __unset($property)
+        {
+                unset($this->properties[$property]);
+        }
+
         #Iteration
         public function rewind()
         {
@@ -355,28 +360,19 @@ class Node extends NodeCommon implements Iterator
         }
 
         /**
-        Use ::stripperHtml after getting an HTML file
+        Use ::stripper after getting an HTML file
         **/
-        static function stripperHtmlFile(Node $node, $file, $allowed = array(), $replacements = array())
+        static function stripperHtmlFile(Node $node, $file, $allowed = array(), $replacements = array(), $full_doc = true)
         {
-                self::stripperHtml($node, file_get_contents($file), $allowed, $replacements);
-        }
-
-
-        /**
-        Use ::stripper after getting the <body> content out of an HTML document
-        **/
-        static function stripperHtml(Node $node, $html, $allowed = array(), $replacements = array())
-        {
-               self::stripper($node, preg_replace('#.*<body>(.*)</body>.*#is', '\\1', $html), $allowed, $replacements);
+                self::stripper($node, file_get_contents($file), $allowed, $replacements, $full_doc);
         }
 
         /**
         Strip out any unspecified tags (and attrs) from a string of HTML and append to a given Node
         **/
-        static function stripper(Node $node, $input, $allowed = array(), $replacements = array())
+        static function stripper(Node $node, $input, $allowed = array(), $replacements = array(), $full_doc = false)
         {
-                new NodeStrip($node, $input, $allowed, $replacements);
+                new NodeStrip($node, $input, $allowed, $replacements, $full_doc);
         }
 
         /**
@@ -531,7 +527,34 @@ class NodeStrip
         private $allowed_spec = array();
         private $replacements = array();
 
-        public function __construct(Node $node, $input, $allowed, array $replacements)
+        private static function findBody($input) {
+                $body = self::domFind($input, function ($child) {
+                        if (!($child instanceof DOMElement))
+                                return;
+
+                        if (strtolower($child->tagName) == 'body')
+                                return $child;
+                });
+
+                return $body? $body : $input;
+        }
+
+        private static function domFind($input, $func)
+        {
+                if (!$input->hasChildNodes())
+                        return;
+
+                foreach ($input->childNodes as $child) {
+                        if (($ret = $func($child)) !== NULL)
+                                return $ret;
+
+                        if ($child instanceof DOMElement)
+                                if (($ret = self::domFind($child, $func)) !== NULL)
+                                        return $ret;
+                }
+        }
+
+        public function __construct(Node $node, $input, $allowed, array $replacements, $full_doc)
         {
                 if (empty($input))
                         return;
@@ -546,9 +569,8 @@ class NodeStrip
                 $input = $d;
                 unset($d);
 
-                # hacky, but DOMDocument adds <html><body>blah</body></html> around the given HTML, which I want to skip
-                $input = $input->childNodes->item(1);
-                $input = $input->childNodes->item(0);
+                if (!$full_doc)
+                        $input = self::findBody($input);
 
                 if (is_string($allowed) && $allowed == '*')
                         $this->all_allowed = true;
@@ -573,9 +595,8 @@ class NodeStrip
 
         private function stripper(Node $node, $input)
         {
-                if (!$input->hasChildNodes()) {
+                if (!$input->hasChildNodes())
                         return;
-                }
 
                 foreach ($input->childNodes as $child) {
                         switch (get_class($child)) {
