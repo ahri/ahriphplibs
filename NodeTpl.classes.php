@@ -25,7 +25,7 @@
  *
  * Requirements:  PHP 5.3.0+
  *
- *       Author:  Adam Piper (adamp@ahri.net)
+ *       Author:  Adam Piper (adam@ahri.net)
  *
  *      Version:  0.1
  *

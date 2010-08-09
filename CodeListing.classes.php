@@ -12,7 +12,7 @@
  *                functions() -- varargs, no args implies "all"
  *                all()       -- calls classes() and functions() with no args
  *
- *       Author:  Adam Piper (adamp@ahri.net)
+ *       Author:  Adam Piper (adam@ahri.net)
  *
  *      Version:  0.1
  *

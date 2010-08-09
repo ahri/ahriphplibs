@@ -8,7 +8,7 @@
  * Requirements:  PHP 5.2.0+
  *                (Node classes -- only for productLinkNode() method)
  *
- *       Author:  Adam Piper (adamp@ahri.net)
+ *       Author:  Adam Piper (adam@ahri.net)
  *
  *      Version:  1.3
  *

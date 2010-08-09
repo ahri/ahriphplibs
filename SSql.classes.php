@@ -1,4 +1,37 @@
 <?php
+/*******************************************************************************
+ *
+ *        Title:  SSql (singleton SQL)
+ *
+ *  Description:  Thinly wrap PDO with a singleton
+ *
+ * Requirements:  PHP 5.2.0+
+ *
+ *       Author:  Adam Piper (adam@ahri.net)
+ *
+ *      Version:  1.00
+ *
+ *         Date:  2010-08-09
+ *
+ *      License:  AGPL (GNU AFFERO GENERAL PUBLIC LICENSE Version 3, 2007-11-19)
+ *
+ * Copyright (c) 2010, Adam Piper
+ * All rights reserved.
+ *
+ *    This library is free software: you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation, either version 3 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ ******************************************************************************/
 
 class SSqlException extends SPFException {}
 class SSqlInputException extends SSqlException {}
