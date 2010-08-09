@@ -251,16 +251,16 @@ class TestDbAccess extends UnitTestCase
                 $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER)');
                 $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
                 $this->db->exec('CREATE TABLE test_named (key1 VARCHAR(10), key2 VARCHAR(10), parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, stuff VARCHAR(25), PRIMARY KEY(key1, key2))');
-                $this->db->exec("INSERT INTO test1 (id, foo) VALUES ('{$this->guid1}', 1)");
-                $this->db->exec("INSERT INTO test1 (id, foo) VALUES ('{$this->guid2}', 1)");
-                $this->db->exec("INSERT INTO test3 (id, parent__key__id, bar, baz) VALUES ('{$this->guid3}', '{$this->guid2}', 2, 3)");
-                $this->db->exec("INSERT INTO test3 (id, parent__key__id, bar, baz) VALUES ('{$this->guid4}', '{$this->guid1}', 2, 3)");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1)");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid2}', 1)");
+                $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid3}', '{$this->guid2}', 2, 3)");
+                $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid4}', '{$this->guid1}', 2, 3)");
         }
 
         public function testReadAllItems()
         {
                 $r = TLO::getObjects($this->db, 'Test3');
-                $this->assertIsA($r, 'TLOResult');
+                $this->assertIsA($r, 'TLOObjectResult');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertFalse($r->fetch());
@@ -269,7 +269,7 @@ class TestDbAccess extends UnitTestCase
         public function testReadSpecifiedItems()
         {
                 $r = TLO::getObjects($this->db, 'Test3', array('where' => 'parent__key__id = ?'), array($this->guid2));
-                $this->assertIsA($r, 'TLOResult');
+                $this->assertIsA($r, 'TLOObjectResult');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertFalse($r->fetch());
         }

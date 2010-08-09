@@ -467,7 +467,7 @@ abstract class TLO
                 $s = self::prepare($db, $sql);
                 $s->setFetchMode(PDO::FETCH_CLASS, $class);
                 $s->execute($params);
-                return new TLOResult($s);
+                return new TLOObjectResult($s);
         }
 
         /** Load a single object from the database **/
@@ -579,7 +579,7 @@ abstract class TLO
         Method to be called right after population of vars occurs
         NB. this is the TLO version of a "constructor", since the true __construct() will be called by PDO prior to populating the variables
         **/
-        public function setup()
+        public function __setup()
         {
                 $this->storeKeys();
         }
@@ -617,8 +617,8 @@ abstract class TLO
         }
 }
 
-/** Fetch an object from the DB (via PDO) and execute ->setup() on it before returning it **/
-class TLOResult
+/** Fetch an object from the DB (via PDO) and execute ->__setup() on it before returning it **/
+class TLOObjectResult
 {
         public $statement = NULL;
 
@@ -630,7 +630,7 @@ class TLOResult
         public function fetch()
         {
                 if ($obj = $this->statement->fetch())
-                        $obj->setup();
+                        $obj->__setup();
 
                 return $obj;
         }
