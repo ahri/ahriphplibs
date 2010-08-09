@@ -458,7 +458,7 @@ abstract class TLO
         }
 
         /** Prepare an execute a PDO query, returning the PDO statement for fetching **/
-        public static function execRead(PDO $db, $class, array $additional = array(), array $params = NULL)
+        public static function getObjects(PDO $db, $class, array $additional = array(), array $params = NULL)
         {
                 $sql = self::sqlRead($class);
                 foreach ($additional as $item => $vals)
@@ -482,7 +482,7 @@ abstract class TLO
                 foreach ($keys as $key_name)
                         $where[] = sprintf('%s.%s = ?', self::transClassTable($class), $key_name);
 
-                $r = self::execRead($db, $class, array('where' => $where), $key_vals);
+                $r = self::getObjects($db, $class, array('where' => $where), $key_vals);
                 return $r->fetch();
         }
 

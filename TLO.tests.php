@@ -1,6 +1,6 @@
 <?php
 error_reporting(E_ALL | E_STRICT);
-require_once('ahriphplibs/Exception.classes.php');
+require_once('Exception.classes.php');
 require_once('TLO.classes.php');
 require_once('SSql.classes.php');
 require_once('simpletest/autorun.php');
@@ -245,7 +245,7 @@ class TestDbAccess extends UnitTestCase
                 $this->guid4 = TLO::guid();
 
                 SSql::setup('sqlite::memory:');
-                $this->db = SSql::get();
+                $this->db = SSql::instance();
                 $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER)');
                 $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
                 $this->db->exec('CREATE TABLE test_named (key1 VARCHAR(10), key2 VARCHAR(10), parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, stuff VARCHAR(25), PRIMARY KEY(key1, key2))');
@@ -257,7 +257,7 @@ class TestDbAccess extends UnitTestCase
 
         public function testReadAllItems()
         {
-                $r = TLO::execRead($this->db, 'Test3');
+                $r = TLO::getObjects($this->db, 'Test3');
                 $this->assertIsA($r, 'TLOResult');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertIsA($r->fetch(), 'Test3');
@@ -266,7 +266,7 @@ class TestDbAccess extends UnitTestCase
 
         public function testReadSpecifiedItems()
         {
-                $r = TLO::execRead($this->db, 'Test3', array('where' => 'parent__key__id = ?'), array($this->guid2));
+                $r = TLO::getObjects($this->db, 'Test3', array('where' => 'parent__key__id = ?'), array($this->guid2));
                 $this->assertIsA($r, 'TLOResult');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertFalse($r->fetch());
