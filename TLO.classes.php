@@ -159,7 +159,7 @@ abstract class TLO
 
                 $base = self::BASE;
                 self::propertyLoop($class, function ($p) use ($base, &$var_names) {
-                        if (!$base::validPropertyName($p))
+                        if (!$base::validName($p))
                                 throw new TloException('Invalid property name: "%s"', $p);
 
                         if (in_array($p, $var_names))
@@ -176,7 +176,7 @@ abstract class TLO
         }
 
         /** a-z, 0-9 and underscore. Must start with a letter. Cannot contain two underscores in a row **/
-        public static function validPropertyName($name)
+        public static function validName($name)
         {
                 return !preg_match('#[^a-z0-9_]|^[^a-z]|__#', $name);
         }

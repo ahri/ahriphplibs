@@ -167,16 +167,18 @@ class TestStructure extends UnitTestCase
                 $this->assertTrue(TLO::validClassName('FooBar'));
                 $this->assertFalse(TLO::validClassName('foobar'));
                 $this->assertFalse(TLO::validClassName('foo_bar'));
+                $this->assertFalse(TLO::validClassName('foo__bar'));
                 $this->assertFalse(TLO::validClassName('Foo_Bar'));
                 $this->assertFalse(TLO::validClassName('fooBar'));
         }
 
         public function testValidPropertyName()
         {
-                $this->assertTrue(TLO::validPropertyName('foo_bar'));
-                $this->assertFalse(TLO::validPropertyName('Foobar'));
-                $this->assertFalse(TLO::validPropertyName('Foo_Bar'));
-                $this->assertFalse(TLO::validPropertyName('fooBar'));
+                $this->assertTrue(TLO::validName('foo_bar'));
+                $this->assertFalse(TLO::validName('foo__bar'));
+                $this->assertFalse(TLO::validName('Foobar'));
+                $this->assertFalse(TLO::validName('Foo_Bar'));
+                $this->assertFalse(TLO::validName('fooBar'));
         }
 }
 
@@ -293,7 +295,7 @@ class TestDbAccess extends UnitTestCase
                 $this->assertIsA(TLO::newObject($this->db, 'Test3'), 'Test3');
         }
 
-        public function estNamed()
+        public function testNamed()
         {
                 # create one, update and write to it, then read it into a new var and assert the changes are there
                 $this->assertIsA($named = TLO::newObject($this->db, 'TestNamed', array('one', 'two')), 'TestNamed');
