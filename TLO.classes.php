@@ -301,7 +301,7 @@ abstract class TLO
                 $values = array();
 
                 $query = new TLOQuery();
-                $query->{'into'}($base::transClassTable($class));
+                $query->{'into'}(self::transClassTable($class));
                 $query->{'insert'}();
                 $query->{'values'}();
                 foreach ($not_nulls as $p) {
