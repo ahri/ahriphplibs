@@ -316,4 +316,46 @@ class TestDbAccess extends UnitTestCase
         }
 }
 
+class TestRelationships extends UnitTestCase
+{
+        public function __construct()
+        {
+                parent::__construct();
+
+                TLO::init();
+
+                $this->guid1 = TLO::guid();
+                $this->guid2 = TLO::guid();
+
+                SSql::setup('sqlite::memory:');
+                $this->db = SSql::instance();
+                $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER, rel__connected_to__key__id CHAR('.strlen($this->guid1).'), rel__connected_to__var__somevar VARCHAR(10))');
+                $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1, '{$this->guid2}', 'foo')");
+                $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid2}', '{$this->guid1}', 2, 3)");
+        }
+
+        public function testStaticDiscovery()
+        {
+                $this->assertTrue(is_subclass_of('ConnectedTo', 'TLORelationship'));
+                $this->assertEqual(ConnectedTo::relation_one(), 'Test3');
+                $this->assertEqual(ConnectedTo::relation_many(), 'Test1');
+        }
+
+        public function testCall()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $this->assertIsA($t->rel('ConnectedTo'), 'TLORelationshipResult');
+        }
+
+        public function testFetch()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $p_connected_to = $t->rel('ConnectedTo');
+                $this->assertIsA($connected_to = $p_connected_to->fetch(), 'ConnectedTo');
+                $this->assertEqual($connected_to->somevar, 'foo');
+                $this->assertIsA($connected_to->getRelation(), 'Test3');
+        }
+}
+
 ?>
