@@ -76,19 +76,19 @@ class TestLoops extends UnitTestCase
         public function testPropertyLoop()
         {
                 $properties = array();
-                TLO::propertyLoop('Test1', function ($p) use (&$properties) {
+                TLO::propertyLoop('Test1', 'TLO', function ($p) use (&$properties) {
                         $properties[] = $p;
                 });
                 $this->assertEqual($properties, array('foo'));
 
                 $properties = array();
-                TLO::propertyLoop('Test2', function ($p) use (&$properties) {
+                TLO::propertyLoop('Test2', 'TLO', function ($p) use (&$properties) {
                         $properties[] = $p;
                 });
                 $this->assertEqual($properties, array());
 
                 $properties = array();
-                TLO::propertyLoop('Test3', function ($p) use (&$properties) {
+                TLO::propertyLoop('Test3', 'TLO', function ($p) use (&$properties) {
                         $properties[] = $p;
                 });
                 $this->assertEqual($properties, array('baz', 'bar'));
@@ -97,19 +97,19 @@ class TestLoops extends UnitTestCase
         public function testConcreteClassLoop()
         {
                 $classes = array();
-                TLO::concreteClassLoop('Test1', function ($c) use (&$classes) {
+                TLO::concreteClassLoop('Test1', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array('Test1'));
 
                 $classes = array();
-                TLO::concreteClassLoop('Test2', function ($c) use (&$classes) {
+                TLO::concreteClassLoop('Test2', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array());
 
                 $classes = array();
-                TLO::concreteClassLoop('Test3', function ($c) use (&$classes) {
+                TLO::concreteClassLoop('Test3', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array('Test3', 'Test1'));
@@ -118,19 +118,19 @@ class TestLoops extends UnitTestCase
         public function testConcreteClassBottomUpLoop()
         {
                 $classes = array();
-                TLO::concreteClassBottomUpLoop('Test1', function ($c) use (&$classes) {
+                TLO::concreteClassBottomUpLoop('Test1', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array('Test1'));
 
                 $classes = array();
-                TLO::concreteClassBottomUpLoop('Test2', function ($c) use (&$classes) {
+                TLO::concreteClassBottomUpLoop('Test2', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array());
 
                 $classes = array();
-                TLO::concreteClassBottomUpLoop('Test3', function ($c) use (&$classes) {
+                TLO::concreteClassBottomUpLoop('Test3', 'TLO', function ($c) use (&$classes) {
                         $classes[] = $c;
                 });
                 $this->assertEqual($classes, array('Test1', 'Test3'));

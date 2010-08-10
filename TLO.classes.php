@@ -60,7 +60,7 @@ abstract class TLO
         Loop over properties, passing the name to a given closure
         NB. Properties inherited from immediate parent abstract classes are listed, too
         **/
-        public static function propertyLoop($class, $func)
+        public static function propertyLoop($class, $base, $func)
         {
                 $c = new ReflectionClass($class);
                 if ($c->isAbstract())
@@ -76,12 +76,12 @@ abstract class TLO
                 while (
                         ($c = $c->getParentClass())
                         && $c->isAbstract()
-                        && $c->getName() != self::BASE
+                        && $c->getName() != $base
                 );
         }
 
         /** Loop over concrete (i.e. non abstract) classes, passing the name to a given closure **/
-        public static function concreteClassLoop($class, $func)
+        public static function concreteClassLoop($class, $base, $func)
         {
                 $c = new ReflectionClass($class);
                 if ($c->isAbstract())
@@ -95,12 +95,12 @@ abstract class TLO
 
                 } while (
                         ($c = $c->getParentClass())
-                        && $c->getName() != self::BASE
+                        && $c->getName() != $base
                 );
         }
 
         /** Loop over (in a bottom-up fashion, i.e. extreme parent, up) concrete (i.e. non abstract) classes, passing the name to a given closure **/
-        public static function concreteClassBottomUpLoop($class, $func)
+        public static function concreteClassBottomUpLoop($class, $base, $func)
         {
                 $c = new ReflectionClass($class);
                 if ($c->isAbstract())
@@ -115,7 +115,7 @@ abstract class TLO
 
                 } while (
                         ($c = $c->getParentClass())
-                        && $c->getName() != self::BASE
+                        && $c->getName() != $base
                 );
 
                 foreach (array_reverse($classes) as $c)
@@ -158,7 +158,7 @@ abstract class TLO
                 $var_names = array();
 
                 $base = self::BASE;
-                self::propertyLoop($class, function ($p) use ($base, &$var_names) {
+                self::propertyLoop($class, $base, function ($p) use ($base, &$var_names) {
                         if (!$base::validName($p))
                                 throw new TloException('Invalid property name: "%s"', $p);
 
@@ -328,7 +328,7 @@ abstract class TLO
                 $last_c = NULL;
 
                 $query = new TLOQuery();
-                self::concreteClassLoop($class, function ($c) use ($base, &$last_c, $query) {
+                self::concreteClassLoop($class, $base, function ($c) use ($base, &$last_c, $query) {
                         $keys = $base::keyNames($c);
                         $table = $base::transClassTable($c);
 
@@ -342,7 +342,7 @@ abstract class TLO
                         if ($keys[0] == $base::AUTO_PROPERTY_ID)
                                 $query->select(sprintf('%s.%s AS %s', $table, $base::AUTO_PROPERTY_ID, $base::autoPropertyAlias($table)));
 
-                        $base::propertyLoop($c, function ($p) use ($query) {
+                        $base::propertyLoop($c, $base, function ($p) use ($query) {
                                 $query->select($p);
                         });
 
@@ -357,11 +357,11 @@ abstract class TLO
         {
                 $base = self::BASE;
                 $queries = array();
-                self::concreteClassLoop($class, function ($c) use ($base, &$queries) {
+                self::concreteClassLoop($class, $base, function ($c) use ($base, &$queries) {
                         $query = new TLOQuery();
                         $query->update($base::transClassTable($c));
                         $assignments = array();
-                        $base::propertyLoop($c, function ($p) use ($base, $query) {
+                        $base::propertyLoop($c, $base, function ($p) use ($base, $query) {
                                 $query->set(sprintf('%s = :%s', $p, $p));
                         });
 
@@ -401,7 +401,7 @@ abstract class TLO
                 if (($parent = self::concreteParent($class)))
                         $keyTypes($parent, TRUE);
 
-                self::propertyLoop($class, function ($p) use (&$properties) {
+                self::propertyLoop($class, $base, function ($p) use (&$properties) {
                         $properties[] = $p;
                 });
 
@@ -434,7 +434,7 @@ abstract class TLO
                 $parent = NULL;
                 $parent_keys = array();
                 $keys = NULL;
-                self::concreteClassBottomUpLoop($class, function ($c) use ($base, $db, &$parent, &$parent_keys, &$class_not_nulls, &$keys) {
+                self::concreteClassBottomUpLoop($class, $base, function ($c) use ($base, $db, &$parent, &$parent_keys, &$class_not_nulls, &$keys) {
                         $vars = isset($class_not_nulls[$c])? $class_not_nulls[$c]
                                                              : array();
                         $keys = array();
@@ -571,7 +571,7 @@ abstract class TLO
         {
                 $base = self::BASE;
                 $o = $this;
-                self::concreteClassLoop(get_class($this), function ($c) use ($base, $o) {
+                self::concreteClassLoop(get_class($this), $base, function ($c) use ($base, $o) {
                         $keys = array();
                         foreach($base::keyNames($c) as $key) {
                                 if ($key == $base::AUTO_PROPERTY_ID) {
@@ -622,7 +622,7 @@ abstract class TLO
         public function properties($class)
         {
                 $properties = array();
-                self::propertyLoop($class, function ($p) use (&$properties) {
+                self::propertyLoop($class, self::BASE, function ($p) use (&$properties) {
                         $properties[] = $p;
                 });
 
