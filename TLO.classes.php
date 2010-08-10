@@ -267,16 +267,29 @@ abstract class TLO
         # SQL
 
         /** Try to output more useful messages **/
-        public static function prepare($db, $query)
+        public static function prepare(PDO $db, $query)
         {
                 try {
                         $statement = $db->prepare($query);
                 }
                 catch (PDOException $e) {
-                        throw new PDOException(sprintf('Error: %s, preparing: %s', $e->getmessage(), $query));
+                        throw new PDOException(sprintf('Error: %s, preparing: "%s"', $e->getmessage(), $query));
                 }
 
                 return $statement;
+        }
+
+        public static function execute(PDOStatement $statement, $args = NULL)
+        {
+                try {
+                        $statement->execute($args);
+                } catch (PDOException $e) {
+                        ob_start();
+                        var_dump($args);
+                        $dump = ob_get_contents();
+                        ob_end_clean();
+                        throw new PDOException(sprintf('Error: %s, executing: "%s" with args: %s', $e->getmessage(), $statement->queryString, $dump));
+                }
         }
 
         /** Generate the SQL required to create a class (including its inherited vars) in the DB **/
@@ -446,7 +459,7 @@ abstract class TLO
                                         : $base::sqlNew($c, $not_nulls);
 
                         $s = $base::prepare($db, $query);
-                        $s->execute($vars);
+                        $base::execute($s, $vars);
 
                         $parent = $c;
                         $parent_keys = array();
@@ -466,7 +479,7 @@ abstract class TLO
 
                 $s = self::prepare($db, $sql);
                 $s->setFetchMode(PDO::FETCH_CLASS, $class);
-                $s->execute($params);
+                self::execute($s, $params);
                 return new TLOObjectResult($s);
         }
 
@@ -601,7 +614,7 @@ abstract class TLO
                         }
 
                         $s = self::prepare($db, $query);
-                        $s->execute($vars);
+                        self::execute($s, $vars);
                 }
         }
 
