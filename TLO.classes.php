@@ -929,8 +929,8 @@ class TLOQuery
         /** Merge in the contents of another TLOQuery **/
         public function merge(TLOQuery $other)
         {
-                foreach ($other->items as $key => $val)
-                        $this->add($key, $val);
+                foreach ($other->items as $key => $vals)
+                        $this->add($key, $vals);
         }
 }
 
