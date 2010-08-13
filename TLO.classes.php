@@ -555,7 +555,7 @@ abstract class TLO
         public function setKeys($class, array $keys)
         {
                 if (isset($this->keys[$class]))
-                        throw new TloException('Keys for class "%s" are already set');
+                        throw new TloException('Keys for class "%s" are already set', $class);
 
                 $this->keys[$class] = $keys;
         }
