@@ -268,7 +268,9 @@ class TestDbAccess extends UnitTestCase
 
         public function testReadSpecifiedItems()
         {
-                $r = TLO::getObjects($this->db, 'Test3', array('where' => 'parent__key__id = ?'), array($this->guid2));
+                $query = new TLOQuery();
+                $query->where('parent__key__id = ?');
+                $r = TLO::getObjects($this->db, 'Test3', $query, array($this->guid2));
                 $this->assertIsA($r, 'TLOObjectResult');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertFalse($r->fetch());

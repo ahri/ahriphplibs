@@ -472,13 +472,13 @@ abstract class TLO
         }
 
         /** Prepare an execute a PDO query, returning the PDO statement for fetching **/
-        public static function getObjects(PDO $db, $class, array $additional = array(), array $params = NULL)
+        public static function getObjects(PDO $db, $class, TLOQuery $additional = NULL, array $params = NULL)
         {
-                $sql = self::sqlRead($class);
-                foreach ($additional as $item => $vals)
-                        $sql->$item($vals);
+                $query = self::sqlRead($class);
+                if ($additional)
+                        $query->merge($additional);
 
-                $s = self::prepare($db, $sql);
+                $s = self::prepare($db, $query);
                 $s->setFetchMode(PDO::FETCH_CLASS, $class);
                 self::execute($s, $params);
                 return new TLOObjectResult($s);
@@ -492,11 +492,11 @@ abstract class TLO
                 if (($keycount = sizeof($keys)) != ($argcount = sizeof($key_vals)))
                         throw new TLOException('Key count mismatch: required %d keys, got %d', $keycount, $argcount);
 
-                $where = array();
+                $query = new TLOQuery();
                 foreach ($keys as $key_name)
-                        $where[] = sprintf('%s.%s = ?', self::transClassTable($class), $key_name);
+                        $query->where(sprintf('%s.%s = ?', self::transClassTable($class), $key_name));
 
-                $r = self::getObjects($db, $class, array('where' => $where), $key_vals);
+                $r = self::getObjects($db, $class, $query, $key_vals);
                 return $r->fetch();
         }
 
