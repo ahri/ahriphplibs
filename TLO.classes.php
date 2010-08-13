@@ -266,7 +266,7 @@ abstract class TLO
         ##################################
         # SQL
 
-        /** Try to output more useful messages **/
+        /** Try to output more useful messages upon statement preparation **/
         public static function prepare(PDO $db, $query)
         {
                 try {
@@ -279,6 +279,7 @@ abstract class TLO
                 return $statement;
         }
 
+        /** Try to output more useful messages upon statement execution **/
         public static function execute(PDOStatement $statement, $args = NULL)
         {
                 try {
@@ -541,6 +542,7 @@ abstract class TLO
                 return $this->keys[$class];
         }
 
+        /** Get the Auto ID **/
         public function getId()
         {
                 $class = get_class($this);
@@ -635,11 +637,13 @@ class TLOObjectResult
 {
         public $_statement = NULL;
 
+        /** Wrap a PDOStatement **/
         public function __construct(PDOStatement $statement)
         {
                 $this->_statement = $statement;
         }
 
+        /** Fetch an object from the DB and execute ->__setup() **/
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch())
@@ -665,6 +669,7 @@ echo $q; # -> "SELECT foo, bar, baz FROM table_a, table_b, table_c WHERE x AND y
 **/
 class TLOQuery
 {
+        /** Note that queries are generated from the content below in the _order of the keys_ **/
         protected $joins = array(
                 'SELECT'      => ', ',
                 'INSERT'      => ', ',
@@ -680,6 +685,7 @@ class TLOQuery
         );
         protected $items = array();
 
+        /** Add part of a query **/
         public function add($item, $values)
         {
                 $item = strtoupper($item);
@@ -690,6 +696,7 @@ class TLOQuery
                         $this->items[$item][] = $value;
         }
 
+        /** Neatly wrap ->add() **/
         public function __call($method, $args)
         {
                 if (sizeof($args) == 1 && is_array($args[0]))
@@ -698,6 +705,7 @@ class TLOQuery
                 $this->add($method, $args);
         }
 
+        /** Build the query in the correct order **/
         public function __toString()
         {
                 $sql = '';
