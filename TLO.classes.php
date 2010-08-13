@@ -669,7 +669,8 @@ echo $q; # -> "SELECT foo, bar, baz FROM table_a, table_b, table_c WHERE x AND y
 **/
 class TLOQuery
 {
-        /** Note that queries are generated from the content below in the _order of the keys_ **/
+        /** Note that queries are generated from the content in $items below in the _order of the keys_ of $joins **/
+
         protected $joins = array(
                 'SELECT'      => ', ',
                 'INSERT'      => ', ',
@@ -683,6 +684,7 @@ class TLOQuery
                 'ORDER BY'    => ', ',
                 'EXTRA'       => ' '
         );
+
         protected $items = array();
 
         /** Add part of a query **/
@@ -732,6 +734,13 @@ class TLOQuery
                 }
 
                 return $sql;
+        }
+
+        /** Merge in the contents of another TLOQuery **/
+        public function merge(TLOQuery $other)
+        {
+                foreach ($other->items as $key => $val)
+                        $this->add($key, $val);
         }
 }
 
