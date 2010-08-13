@@ -770,6 +770,9 @@ abstract class TLORelationship
 
         public function setRelation(TLO $relation)
         {
+                if (!is_null($this->relation))
+                        throw new TLOException('Relation already set');
+
                 $this->relation = $relation;
         }
 
