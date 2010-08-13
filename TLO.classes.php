@@ -630,6 +630,153 @@ abstract class TLO
 
                 return $properties;
         }
+
+        ##################################
+        # Relationships
+
+        public function rels($db, $relationship)
+        {
+                return TLORelationship::getMany($relationship, $this);
+        }
+
+        public function rel($db, $relationship)
+        {
+                return TLORelationship::getOne($relationship, $this);
+        }
+}
+
+abstract class TLORelationship
+{
+        protected $keys = NULL;
+        protected $relation = NULL;
+
+        const TYPE_ONE = 1;
+        const TYPE_MANY = 2;
+
+        ##################################
+        # "Abstract" static methods
+
+        public static function relationOne()
+        {
+                throw new TLOException('Must declare own static relationOne()');
+        }
+
+        public static function relationMany()
+        {
+                throw new TLOException('Must declare own static relationMany()');
+        }
+
+        ##################################
+        # Runtime methods
+
+        protected static function getRel($db, $relationship, TLO $obj, $type)
+        {
+                $query = self::sqlRead($relationship);
+                $c_one = $relationship::relationOne();
+                $c_many = $relationship::relationMany();
+                $relname = TLO::transClassTable($relationship);
+
+                switch ($type) {
+                case self::TYPE_ONE:
+                        $c_obj = $c_many;
+                        $c_rel = $c_one;
+
+                        $keys = array_map(function ($key) use ($relname) {
+                                return TLO::developedColName($relname, 'key', $key);
+                        }, TLO::keyNames($c_rel));
+
+                        $params = array();
+                        foreach ($obj->getKeys($c_obj) as $key => $val) {
+                                $query->where(sprintf('%s = ?', $key));
+                                $params[] = $val;
+                        }
+
+                        break;
+
+                case self::TYPE_MANY:
+                        $c_obj = $c_one;
+                        $c_rel = $c_many;
+
+                        $keys = TLO::keyNames($c_rel);
+
+                        $params = array();
+                        foreach ($obj->getKeys($c_obj) as $key => $val) {
+                                $query->where(sprintf('%s = ?', TLO::developedColName($relname, 'key', $key)));
+                                $params[] = $val;
+                        }
+
+                        break;
+
+                default:
+                        throw new TLOException('Unexpected value for type: "%s"', $type);
+                }
+
+                if (!is_a($obj, $c_obj))
+                        throw new TLOException('Object of type "%s" is not a subclass of "%s"', get_class($obj), $c_obj);
+
+                $s = TLO::prepare($db, $query);
+                $s->setFetchMode(PDO::FETCH_CLASS, $relationship);
+                TLO::execute($s, $params);
+
+                return new TLORelationshipResult($db, $s, $c_rel, $keys);
+        }
+
+        public static function getOne($db, $relationship, TLO $obj)
+        {
+                return self::getRel($db, $relationship, $obj, self::TYPE_ONE);
+        }
+
+        public static function getMany($db, $relationship, TLO $obj)
+        {
+                return self::getRel($db, $relationship, $obj, self::TYPE_MANY);
+        }
+
+        ##################################
+        # SQL
+
+        public static function sqlRead($relationship)
+        {
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+                $query = new TLOQuery();
+                $query->from(TLO::transClassTable($location_class));
+
+                foreach (TLO::keyNames($location_class) as $key)
+                        $query->select($key);
+
+                foreach (TLO::keyNames($relation_class) as $key)
+                        $query->select(TLO::developedColName($relname, 'key', $key));
+
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
+                                $query->select(sprintf('%s AS %s', TLO::developedColName($relname, 'var', $p), $p));
+                        });
+                });
+
+                return $query;
+        }
+
+        ##################################
+        # Dynamic items
+
+        public function setKeys(array $keys)
+        {
+                if (!is_null($this->keys))
+                        throw new TloException('Keys are already set');
+
+                $this->keys = $keys;
+        }
+
+        public function setRelation(TLO $relation)
+        {
+                $this->relation = $relation;
+        }
+
+        public function getRelation()
+        {
+                return $this->relation;
+        }
 }
 
 /** Fetch an object from the DB (via PDO) and execute ->__setup() on it before returning it **/
@@ -648,6 +795,34 @@ class TLOObjectResult
         {
                 if ($obj = $this->_statement->fetch())
                         $obj->__setup();
+
+                return $obj;
+        }
+}
+
+/** Fetch a relationship's variables and the relation object from the DB (via PDO) **/
+class TLORelationshipResult
+{
+        public $_statement = NULL;
+
+        public function __construct(PDO $db, PDOStatement $statement, $class, $key_names)
+        {
+                $this->_db = $db;
+                $this->_statement = $statement;
+                $this->_class = $class;
+                $this->_key_names = $key_names;
+        }
+
+        public function fetch()
+        {
+                if ($obj = $this->_statement->fetch()) {
+                        $rel_keys = array();
+                        foreach ($this->_key_names as $key) {
+                                $rel_keys[] = $obj->$key;
+                                unset($obj->$key);
+                        }
+                        $obj->setRelation(TLO::getObject($this->_db, $this->_class, $rel_keys));
+                }
 
                 return $obj;
         }

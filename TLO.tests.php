@@ -32,6 +32,26 @@ class TestNamed extends Test2
         public $stuff;
 }
 
+class TimeRel extends TLORelationship
+{
+        public $time;
+}
+
+class ConnectedTo extends TimeRel
+{
+        public $somevar;
+
+        public static function relationOne()
+        {
+                return 'Test3';
+        }
+
+        public static function relationMany()
+        {
+                return 'Test1';
+        }
+}
+
 /*
 assertTrue($x)                  Fail if $x is false
 assertFalse($x)                 Fail if $x is true
@@ -329,32 +349,48 @@ class TestRelationships extends UnitTestCase
 
                 SSql::setup('sqlite::memory:');
                 $this->db = SSql::instance();
-                $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER, rel__connected_to__key__id CHAR('.strlen($this->guid1).'), rel__connected_to__var__somevar VARCHAR(10))');
+                $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER, connected_to__key__id CHAR('.strlen($this->guid1).'), connected_to__var__somevar VARCHAR(10), connected_to__var__time DATETIME)');
                 $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
-                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1, '{$this->guid2}', 'foo')");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1, '{$this->guid2}', 'foo', datetime('now'))");
                 $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid2}', '{$this->guid1}', 2, 3)");
         }
 
         public function testStaticDiscovery()
         {
                 $this->assertTrue(is_subclass_of('ConnectedTo', 'TLORelationship'));
-                $this->assertEqual(ConnectedTo::relation_one(), 'Test3');
-                $this->assertEqual(ConnectedTo::relation_many(), 'Test1');
+                $this->assertEqual(ConnectedTo::relationOne(), 'Test3');
+                $this->assertEqual(ConnectedTo::relationMany(), 'Test1');
         }
 
-        public function testCall()
+        public function testCallGetOne()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $this->assertIsA($t->rel('ConnectedTo'), 'TLORelationshipResult');
+                $this->assertIsA(TLORelationship::getOne($this->db, 'ConnectedTo', $t), 'TLORelationshipResult');
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
         }
 
-        public function testFetch()
+        public function testCallGetMany()
+        {
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $this->assertIsA(TLORelationship::getMany($this->db, 'ConnectedTo', $t), 'TLORelationshipResult');
+        }
+
+        public function testFetchOne()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $p_connected_to = $t->rel('ConnectedTo');
+                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
                 $this->assertIsA($connected_to = $p_connected_to->fetch(), 'ConnectedTo');
                 $this->assertEqual($connected_to->somevar, 'foo');
                 $this->assertIsA($connected_to->getRelation(), 'Test3');
+        }
+
+        public function testFetchMany()
+        {
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $p_connected_to = TLORelationship::getMany($this->db, 'ConnectedTo', $t);
+                $this->assertIsA($connected_to = $p_connected_to->fetch(), 'ConnectedTo');
+                $this->assertEqual($connected_to->somevar, 'foo');
+                $this->assertIsA($connected_to->getRelation(), 'Test1');
         }
 }
 
