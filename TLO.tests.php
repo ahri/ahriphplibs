@@ -226,6 +226,11 @@ class TestSqlConstruction extends UnitTestCase
                 $this->assertEqual(''.TLO::sqlNew('Test3', array('foo')), 'INSERT INTO test3 (foo) VALUES (:foo)');
         }
 
+        public function testSqlDelete()
+        {
+                $this->assertEqual(''.TLO::sqlDelete('Test3'), 'DELETE FROM test3 WHERE id = ?');
+        }
+
         public function testSqlExtend()
         {
                 $this->assertEqual(''.TLO::sqlExtend('Test1', 'Test3'), 'INSERT INTO test3 (parent__key__id) VALUES (:parent__key__id)');
@@ -310,6 +315,12 @@ class TestDbAccess extends UnitTestCase
                 $this->assertIsA($s,'PDOStatement');
                 $r = $s->fetch(PDO::FETCH_ASSOC);
                 $this->assertEqual(array_pop($r), '10');
+        }
+
+        public function testDeleteObject()
+        {
+                $this->o->delete($this->db);
+                $this->assertFalse(TLO::getObject($this->db, 'Test3', array($this->guid4)));
         }
 
         public function testNew()

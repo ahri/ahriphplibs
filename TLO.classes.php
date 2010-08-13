@@ -375,6 +375,17 @@ abstract class TLO
                 return $queries;
         }
 
+        public static function sqlDelete($class)
+        {
+                $query = new TLOQuery();
+                $query->delete();
+                $query->from(self::transClassTable($class));
+                foreach (TLO::keyNames($class) as $key)
+                        $query->where(sprintf('%s = ?', $key));
+
+                return $query;
+        }
+
         /**
         Generate some fairly generic SQL to help create the table for a class (including its inherited abstract vars)
         NB. Will not include the variables for inherited concrete classes
@@ -618,6 +629,13 @@ abstract class TLO
                         $s = self::prepare($db, $query);
                         self::execute($s, $vars);
                 }
+        }
+
+        /** Delete the top class for the current object from the database **/
+        public function delete(PDO $db)
+        {
+                $s = self::prepare($db, self::sqlDelete(get_class($this)));
+                self::execute($s, array_values($this->getKeys(get_class($this))));
         }
 
         /** Returns an associative array of properties and their values for the given class of this object **/
@@ -917,6 +935,9 @@ class TLOQuery
                                 break;
                         case 'VALUES':
                                 $sql .= sprintf('%s (%s)', $item, implode($this->joins[$item], $this->items[$item]));
+                                break;
+                        case 'DELETE':
+                                $sql .= sprintf('%s', $item);
                                 break;
                         default:
                                 $sql .= sprintf('%s %s', $item, implode($this->joins[$item], $this->items[$item]));
