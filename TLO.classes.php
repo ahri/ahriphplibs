@@ -633,16 +633,16 @@ abstract class TLO
 /** Fetch an object from the DB (via PDO) and execute ->__setup() on it before returning it **/
 class TLOObjectResult
 {
-        public $statement = NULL;
+        public $_statement = NULL;
 
         public function __construct(PDOStatement $statement)
         {
-                $this->statement = $statement;
+                $this->_statement = $statement;
         }
 
         public function fetch()
         {
-                if ($obj = $this->statement->fetch())
+                if ($obj = $this->_statement->fetch())
                         $obj->__setup();
 
                 return $obj;
