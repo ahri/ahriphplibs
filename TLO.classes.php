@@ -645,6 +645,7 @@ abstract class TLO
         }
 }
 
+/** Represent a relationship **/
 abstract class TLORelationship
 {
         protected $keys = NULL;
@@ -656,11 +657,13 @@ abstract class TLORelationship
         ##################################
         # "Abstract" static methods
 
+        /** Return a string giving the class on the "one" side of the relationship **/
         public static function relationOne()
         {
                 throw new TLOException('Must declare own static relationOne()');
         }
 
+        /** Return a string giving the class on the "many" side of the relationship **/
         public static function relationMany()
         {
                 throw new TLOException('Must declare own static relationMany()');
@@ -669,6 +672,7 @@ abstract class TLORelationship
         ##################################
         # Runtime methods
 
+        /** Produce a TLORelationshipResult object **/
         protected static function getRel($db, $relationship, TLO $obj, $type)
         {
                 $query = self::sqlRead($relationship);
@@ -721,11 +725,13 @@ abstract class TLORelationship
                 return new TLORelationshipResult($db, $s, $c_rel, $keys);
         }
 
+        /** Wrap getRel() to get the "one" side of the relationship **/
         public static function getOne($db, $relationship, TLO $obj)
         {
                 return self::getRel($db, $relationship, $obj, self::TYPE_ONE);
         }
 
+        /** Wrap getRel() to get the "many" side of the relationship **/
         public static function getMany($db, $relationship, TLO $obj)
         {
                 return self::getRel($db, $relationship, $obj, self::TYPE_MANY);
@@ -734,6 +740,7 @@ abstract class TLORelationship
         ##################################
         # SQL
 
+        /** Generate the SQL for pulling in all the data on a relationship **/
         public static function sqlRead($relationship)
         {
                 $relname = TLO::transClassTable($relationship);
@@ -760,6 +767,7 @@ abstract class TLORelationship
         ##################################
         # Dynamic items
 
+        /** Set the keys (once) with which we can track the relationship (i.e. the keys of the "many" side row) **/
         public function setKeys(array $keys)
         {
                 if (!is_null($this->keys))
@@ -768,6 +776,7 @@ abstract class TLORelationship
                 $this->keys = $keys;
         }
 
+        /** Set the relation object (once) **/
         public function setRelation(TLO $relation)
         {
                 if (!is_null($this->relation))
@@ -776,6 +785,7 @@ abstract class TLORelationship
                 $this->relation = $relation;
         }
 
+        /** Get the relation object for this relationship **/
         public function getRelation()
         {
                 return $this->relation;
@@ -808,6 +818,7 @@ class TLORelationshipResult
 {
         public $_statement = NULL;
 
+        /** Wrap a PDOStatement and give instructions on what object to load based on which keys **/
         public function __construct(PDO $db, PDOStatement $statement, $class, $key_names)
         {
                 $this->_db = $db;
@@ -816,6 +827,7 @@ class TLORelationshipResult
                 $this->_key_names = $key_names;
         }
 
+        /** Fetch a TLORelationship object from the database and add a TLO object to it **/
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch()) {
