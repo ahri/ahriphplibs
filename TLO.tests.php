@@ -376,8 +376,7 @@ class TestRelationships extends UnitTestCase
         public function testCallGetOne()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $this->assertIsA(TLORelationship::getOne($this->db, 'ConnectedTo', $t), 'TLORelationshipResult');
-                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $this->assertIsA(TLORelationship::getOne($this->db, 'ConnectedTo', $t), 'ConnectedTo');
         }
 
         public function testCallGetMany()
@@ -389,8 +388,7 @@ class TestRelationships extends UnitTestCase
         public function testFetchOne()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
-                $this->assertIsA($connected_to = $p_connected_to->fetch(), 'ConnectedTo');
+                $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
                 $this->assertEqual($connected_to->somevar, 'foo');
                 $this->assertIsA($connected_to->getRelation(), 'Test3');
         }
