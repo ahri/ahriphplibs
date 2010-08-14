@@ -746,7 +746,7 @@ abstract class TLORelationship
         /** Wrap getRel() to get the "one" side of the relationship **/
         public static function getOne($db, $relationship, TLO $obj)
         {
-                return self::getRel($db, $relationship, $obj, self::TYPE_ONE);
+                return self::getRel($db, $relationship, $obj, self::TYPE_ONE)->fetch();
         }
 
         /** Wrap getRel() to get the "many" side of the relationship **/
