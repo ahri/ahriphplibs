@@ -403,6 +403,38 @@ class TestRelationships extends UnitTestCase
                 $this->assertEqual($connected_to->somevar, 'foo');
                 $this->assertIsA($connected_to->getRelation(), 'Test1');
         }
+
+        public function testCreate()
+        {
+                $t1 = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $t3 = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $this->assertIsA($connected_to = TLORelationship::newObject('ConnectedTo', $t3, $t1), 'ConnectedTo');
+                $this->assertEqual($connected_to->somevar, '');
+        }
+
+        public function testWrite()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $connected_to = $p_connected_to->fetch();
+                $connected_to->somevar = 'test write';
+                $connected_to->write();
+
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $p_connected_to = TLORelationship::getMany($this->db, 'ConnectedTo', $t);
+                $connected_to = $p_connected_to->fetch();
+                $this->assertEqual($connected_to->somevar, 'test write');
+        }
+
+        public function testDelete()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $connected_to = $p_connected_to->fetch();
+                $connected_to->delete();
+                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $this->assertFalse($p_connected_to->fetch());
+        }
 }
 
 class TestIteration extends UnitTestCase

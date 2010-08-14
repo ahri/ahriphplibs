@@ -755,6 +755,11 @@ abstract class TLORelationship
                 return self::getRel($db, $relationship, $obj, self::TYPE_MANY);
         }
 
+        /** Update the appropriate line in the DB to NULLs and load it, returning that object **/
+        public static function newObject($relationship, TLO $one, TLO $many)
+        {
+        }
+
         ##################################
         # SQL
 
@@ -807,6 +812,16 @@ abstract class TLORelationship
         public function getRelation()
         {
                 return $this->relation;
+        }
+
+        /** Write the relationship to the DB **/
+        public function write()
+        {
+        }
+
+        /** Delete the relationship from the DB **/
+        public function delete()
+        {
         }
 }
 
