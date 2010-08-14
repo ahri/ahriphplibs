@@ -413,8 +413,7 @@ class TestRelationships extends UnitTestCase
         public function testWrite()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
-                $connected_to = $p_connected_to->fetch();
+                $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
                 $connected_to->somevar = 'test write';
                 $connected_to->write();
 
