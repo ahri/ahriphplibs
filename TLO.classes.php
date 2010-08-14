@@ -688,6 +688,110 @@ abstract class TLORelationship
         }
 
         ##################################
+        # SQL
+
+        /** Generate the SQL for pulling in all the data on a relationship **/
+        public static function sqlRead($relationship)
+        {
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+                $query = new TLOQuery();
+                $query->from(TLO::transClassTable($location_class));
+
+                foreach (TLO::keyNames($location_class) as $key)
+                        $query->select($key);
+
+                foreach (TLO::keyNames($relation_class) as $key) {
+                        $keyname = TLO::developedColName($relname, 'key', $key);
+                        $query->select($keyname);
+                        $query->where(sprintf('%s IS NOT NULL', $keyname));
+                }
+
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
+                                $query->select(sprintf('%s AS %s', TLO::developedColName($relname, 'var', $p), $p));
+                        });
+                });
+
+                return $query;
+        }
+
+        /** Generate the SQL to create a relationship in the DB **/
+        public static function sqlCreate($relationship)
+        {
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+                $location_name = TLO::transClassTable($location_class);
+                $query = new TLOQuery();
+                $query->update($location_name);
+
+
+                foreach (TLO::keyNames($relation_class) as $key)
+                        $query->set(sprintf('%s = ?', TLO::developedColName($relname, 'key', $key)));
+
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
+                                $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'var', $p), $p));
+                        });
+                });
+
+                foreach (TLO::keyNames($location_class) as $key)
+                        $query->where(sprintf('%s = ?', $key));
+
+                return $query;
+        }
+
+        /** Generate the SQL to write a relationship to the DB **/
+        public static function sqlWrite($relationship)
+        {
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+                $location_name = TLO::transClassTable($location_class);
+                $query = new TLOQuery();
+                $query->update($location_name);
+
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
+                                $query->set(sprintf('%s = ?', TLO::developedColName($relname, 'var', $p), $p));
+                        });
+                });
+
+                foreach (TLO::keyNames($location_class) as $key)
+                        $query->where(sprintf('%s = ?', $key));
+
+                return $query;
+        }
+
+        /** Generate the SQL to write a relationship to the DB **/
+        public static function sqlDelete($relationship)
+        {
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+                $location_name = TLO::transClassTable($location_class);
+                $query = new TLOQuery();
+                $query->update($location_name);
+
+
+                foreach (TLO::keyNames($relation_class) as $key)
+                        $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'key', $key)));
+
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
+                                $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'var', $p), $p));
+                        });
+                });
+
+                foreach (TLO::keyNames($location_class) as $key)
+                        $query->where(sprintf('%s = ?', $key));
+
+                return $query;
+        }
+
+        ##################################
         # Runtime methods
 
         /** Produce a TLORelationshipResult object **/
@@ -698,12 +802,14 @@ abstract class TLORelationship
                 $c_many = $relationship::relationMany();
                 $relname = TLO::transClassTable($relationship);
 
+                $keys = TLO::keyNames($c_many);
+
                 switch ($type) {
                 case self::TYPE_ONE:
                         $c_obj = $c_many;
                         $c_rel = $c_one;
 
-                        $keys = array_map(function ($key) use ($relname) {
+                        $rel_keys = array_map(function ($key) use ($relname) {
                                 return TLO::developedColName($relname, 'key', $key);
                         }, TLO::keyNames($c_rel));
 
@@ -719,7 +825,7 @@ abstract class TLORelationship
                         $c_obj = $c_one;
                         $c_rel = $c_many;
 
-                        $keys = TLO::keyNames($c_rel);
+                        $rel_keys = TLO::keyNames($c_rel);
 
                         $params = array();
                         foreach ($obj->getKeys($c_obj) as $key => $val) {
@@ -740,7 +846,7 @@ abstract class TLORelationship
                 $s->setFetchMode(PDO::FETCH_CLASS, $relationship);
                 TLO::execute($s, $params);
 
-                return new TLORelationshipResult($db, $s, $c_rel, $keys);
+                return new TLORelationshipResult($db, $s, $keys, $c_rel, $rel_keys);
         }
 
         /** Wrap getRel() to get the "one" side of the relationship **/
@@ -756,35 +862,24 @@ abstract class TLORelationship
         }
 
         /** Update the appropriate line in the DB to NULLs and load it, returning that object **/
-        public static function newObject($relationship, TLO $one, TLO $many)
+        public static function newObject($db, $relationship, TLO $one, TLO $many)
         {
-        }
-
-        ##################################
-        # SQL
-
-        /** Generate the SQL for pulling in all the data on a relationship **/
-        public static function sqlRead($relationship)
-        {
-                $relname = TLO::transClassTable($relationship);
                 $location_class = $relationship::relationMany();
                 $relation_class = $relationship::relationOne();
-                $query = new TLOQuery();
-                $query->from(TLO::transClassTable($location_class));
 
-                foreach (TLO::keyNames($location_class) as $key)
-                        $query->select($key);
+                $query = self::sqlCreate($relationship);
 
-                foreach (TLO::keyNames($relation_class) as $key)
-                        $query->select(TLO::developedColName($relname, 'key', $key));
+                $params = array();
+                foreach ($one->getKeys($relation_class) as $key => $val)
+                        $params[] = $val;
 
-                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
-                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
-                                $query->select(sprintf('%s AS %s', TLO::developedColName($relname, 'var', $p), $p));
-                        });
-                });
+                foreach ($many->getKeys($location_class) as $key => $val)
+                        $params[] = $val;
 
-                return $query;
+                $s = TLO::prepare($db, $query);
+                TLO::execute($s, $params);
+
+                return TLORelationship::getOne($db, $relationship, $many);
         }
 
         ##################################
@@ -797,6 +892,12 @@ abstract class TLORelationship
                         throw new TloException('Keys are already set');
 
                 $this->keys = $keys;
+        }
+
+        /** Get the keys to the relationship row in the "many" side table **/
+        public function getKeys()
+        {
+                return $this->keys;
         }
 
         /** Set the relation object (once) **/
@@ -815,13 +916,37 @@ abstract class TLORelationship
         }
 
         /** Write the relationship to the DB **/
-        public function write()
+        public function write($db)
         {
+                $relationship = get_class($this);
+                $relname = TLO::transClassTable($relationship);
+                $location_class = $relationship::relationMany();
+                $relation_class = $relationship::relationOne();
+
+                $query = self::sqlWrite($relationship);
+
+                $params = array();
+                $obj = $this;
+                TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, &$params, $obj) {
+                        TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, &$params, $obj) {
+                                $params[] = $obj->$p;
+                        });
+                });
+
+                foreach ($this->getKeys() as $key => $val)
+                        $params[] = $val;
+
+                $s = TLO::prepare($db, $query);
+                TLO::execute($s, $params);
         }
 
         /** Delete the relationship from the DB **/
-        public function delete()
+        public function delete($db)
         {
+                $relationship = get_class($this);
+                $query = self::sqlDelete($relationship);
+                $s = TLO::prepare($db, $query);
+                TLO::execute($s, array_values($this->getKeys()));
         }
 }
 
@@ -886,24 +1011,34 @@ class TLORelationshipResult implements Iterator
         public $_statement = NULL;
 
         /** Wrap a PDOStatement and give instructions on what object to load based on which keys **/
-        public function __construct(PDO $db, PDOStatement $statement, $class, $key_names)
+        public function __construct(PDO $db, PDOStatement $statement, $key_names, $rel_class, $rel_key_names)
         {
                 $this->_db = $db;
                 $this->_statement = $statement;
-                $this->_class = $class;
                 $this->_key_names = $key_names;
+                $this->_rel_class = $rel_class;
+                $this->_rel_key_names = $rel_key_names;
         }
 
         /** Fetch a TLORelationship object from the database and add a TLO object to it **/
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch()) {
+                        # set the keys
+                        $keys = array();
+                        foreach ($this->_key_names as $key)
+                                $keys[$key] = $obj->$key;
+
+                        $obj->setKeys($keys);
+
+                        # set the relation object
                         $rel_keys = array();
-                        foreach ($this->_key_names as $key) {
+                        foreach ($this->_rel_key_names as $key) {
                                 $rel_keys[] = $obj->$key;
                                 unset($obj->$key);
                         }
-                        $obj->setRelation(TLO::getObject($this->_db, $this->_class, $rel_keys));
+
+                        $obj->setRelation(TLO::getObject($this->_db, $this->_rel_class, $rel_keys));
                 }
 
                 return $obj;

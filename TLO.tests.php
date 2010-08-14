@@ -406,7 +406,7 @@ class TestRelationships extends UnitTestCase
         {
                 $t1 = TLO::getObject($this->db, 'Test1', array($this->guid1));
                 $t3 = TLO::getObject($this->db, 'Test3', array($this->guid2));
-                $this->assertIsA($connected_to = TLORelationship::newObject('ConnectedTo', $t3, $t1), 'ConnectedTo');
+                $this->assertIsA($connected_to = TLORelationship::newObject($this->db, 'ConnectedTo', $t3, $t1), 'ConnectedTo');
                 $this->assertEqual($connected_to->somevar, '');
         }
 
@@ -415,7 +415,7 @@ class TestRelationships extends UnitTestCase
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
                 $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
                 $connected_to->somevar = 'test write';
-                $connected_to->write();
+                $connected_to->write($this->db);
 
                 $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
                 $p_connected_to = TLORelationship::getMany($this->db, 'ConnectedTo', $t);
@@ -426,11 +426,9 @@ class TestRelationships extends UnitTestCase
         public function testDelete()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
-                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
-                $connected_to = $p_connected_to->fetch();
-                $connected_to->delete();
-                $p_connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
-                $this->assertFalse($p_connected_to->fetch());
+                $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $connected_to->delete($this->db);
+                $this->assertFalse(TLORelationship::getOne($this->db, 'ConnectedTo', $t));
         }
 }
 
