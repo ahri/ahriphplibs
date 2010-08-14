@@ -405,4 +405,52 @@ class TestRelationships extends UnitTestCase
         }
 }
 
+class TestIteration extends UnitTestCase
+{
+        private $db = NULL;
+
+        public function __construct()
+        {
+                parent::__construct();
+
+                TLO::init();
+
+                $this->guid1 = TLO::guid();
+                $this->guid2 = TLO::guid();
+                $this->guid3 = TLO::guid();
+                $this->guid4 = TLO::guid();
+
+                SSql::setup('sqlite::memory:');
+                $this->db = SSql::instance();
+                $this->db->exec('CREATE TABLE test1 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, foo INTEGER, connected_to__key__id CHAR('.strlen($this->guid1).'), connected_to__var__somevar VARCHAR(10), connected_to__var__time DATETIME)');
+                $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1, '{$this->guid2}', 'foo', datetime('now'))");
+                $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid2}', '{$this->guid1}', 2, 3)");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid3}', 1, '{$this->guid2}', 'foo', datetime('now'))");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid4}', 1, '{$this->guid2}', 'foo', datetime('now'))");
+        }
+
+        public function testObjectResultIteration()
+        {
+                foreach (TLO::getObjects($this->db, 'Test1') as $i => $o) {
+                        $this->assertNoPattern('/[^0-9]/', $i);
+                        $this->assertIsA($o, 'Test1');
+                }
+
+                $this->assertEqual($i, 2);
+        }
+
+        public function testRelationshipResultIteration()
+        {
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                foreach (TLORelationship::getMany($this->db, 'ConnectedTo', $t) as $i => $o) {
+                        $this->assertNoPattern('/[^0-9]/', $i);
+                        $this->assertIsA($o, 'ConnectedTo');
+                        $this->assertIsA($o->getRelation(), 'Test1');
+                }
+
+                $this->assertEqual($i, 2);
+        }
+}
+
 ?>

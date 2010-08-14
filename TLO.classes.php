@@ -811,7 +811,7 @@ abstract class TLORelationship
 }
 
 /** Fetch an object from the DB (via PDO) and execute ->__setup() on it before returning it **/
-class TLOObjectResult
+class TLOObjectResult implements Iterator
 {
         public $_statement = NULL;
 
@@ -829,10 +829,44 @@ class TLOObjectResult
 
                 return $obj;
         }
+
+        ##################################
+        # Iterator functions
+
+        private $key = 0;
+        private $fetched = NULL;
+
+        public function current()
+        {
+                return $this->fetched;
+        }
+
+        public function next()
+        {
+                $this->fetched = $this->fetch();
+                $this->key++;
+                return $this->fetched;
+        }
+
+        public function key()
+        {
+                return $this->key;
+        }
+
+        public function valid()
+        {
+                return $this->fetched;
+        }
+
+        public function rewind()
+        {
+                $this->fetched = $this->fetch();
+                $this->key = 0;
+        }
 }
 
 /** Fetch a relationship's variables and the relation object from the DB (via PDO) **/
-class TLORelationshipResult
+class TLORelationshipResult implements Iterator
 {
         public $_statement = NULL;
 
@@ -858,6 +892,40 @@ class TLORelationshipResult
                 }
 
                 return $obj;
+        }
+
+        ##################################
+        # Iterator functions
+
+        private $key = 0;
+        private $fetched = NULL;
+
+        public function current()
+        {
+                return $this->fetched;
+        }
+
+        public function next()
+        {
+                $this->fetched = $this->fetch();
+                $this->key++;
+                return $this->fetched;
+        }
+
+        public function key()
+        {
+                return $this->key;
+        }
+
+        public function valid()
+        {
+                return $this->fetched;
+        }
+
+        public function rewind()
+        {
+                $this->fetched = $this->fetch();
+                $this->key = 0;
         }
 }
 
