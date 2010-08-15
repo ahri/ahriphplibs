@@ -652,12 +652,12 @@ abstract class TLO
         ##################################
         # Relationships
 
-        public function rels($db, $relationship)
+        public function rels(PDO $db, $relationship)
         {
                 return TLORelationship::getMany($relationship, $this);
         }
 
-        public function rel($db, $relationship)
+        public function rel(PDO $db, $relationship)
         {
                 return TLORelationship::getOne($relationship, $this);
         }
@@ -795,7 +795,7 @@ abstract class TLORelationship
         # Runtime methods
 
         /** Produce a TLORelationshipResult object **/
-        protected static function getRel($db, $relationship, TLO $obj, $type)
+        protected static function getRel(PDO $db, $relationship, TLO $obj, $type)
         {
                 $query = self::sqlRead($relationship);
                 $c_one = $relationship::relationOne();
@@ -850,19 +850,19 @@ abstract class TLORelationship
         }
 
         /** Wrap getRel() to get the "one" side of the relationship **/
-        public static function getOne($db, $relationship, TLO $obj)
+        public static function getOne(PDO $db, $relationship, TLO $obj)
         {
                 return self::getRel($db, $relationship, $obj, self::TYPE_ONE)->fetch();
         }
 
         /** Wrap getRel() to get the "many" side of the relationship **/
-        public static function getMany($db, $relationship, TLO $obj)
+        public static function getMany(PDO $db, $relationship, TLO $obj)
         {
                 return self::getRel($db, $relationship, $obj, self::TYPE_MANY);
         }
 
         /** Update the appropriate line in the DB to NULLs and load it, returning that object **/
-        public static function newObject($db, $relationship, TLO $one, TLO $many)
+        public static function newObject(PDO $db, $relationship, TLO $one, TLO $many)
         {
                 $location_class = $relationship::relationMany();
                 $relation_class = $relationship::relationOne();
@@ -916,7 +916,7 @@ abstract class TLORelationship
         }
 
         /** Write the relationship to the DB **/
-        public function write($db)
+        public function write(PDO $db)
         {
                 $relationship = get_class($this);
                 $relname = TLO::transClassTable($relationship);
@@ -941,7 +941,7 @@ abstract class TLORelationship
         }
 
         /** Delete the relationship from the DB **/
-        public function delete($db)
+        public function delete(PDO $db)
         {
                 $relationship = get_class($this);
                 $query = self::sqlDelete($relationship);
