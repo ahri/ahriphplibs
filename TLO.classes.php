@@ -293,6 +293,22 @@ abstract class TLO
                 }
         }
 
+        /** Prepare and execute a query, returning the PDOStatement object **/
+        public static function execFetchClass(PDO $db, $class, $query, $params = NULL)
+        {
+                $statement = TLO::prepare($db, $query);
+                $statement->setFetchMode(PDO::FETCH_CLASS, $class);
+                TLO::execute($statement, $params);
+                return $statement;
+        }
+
+        /** Add WHERE for the keys for the given class **/
+        public static function whereKeys(TLOQuery $query, $class)
+        {
+                foreach (TLO::keyNames($class) as $key)
+                        $query->where('%s = ?', $key);
+        }
+
         /** Generate the SQL required to create a class (including its inherited vars) in the DB **/
         public static function sqlNew($class, array $not_nulls = array())
         {
@@ -381,9 +397,7 @@ abstract class TLO
                 $query = new TLOQuery();
                 $query->delete();
                 $query->from(self::transClassTable($class));
-                foreach (TLO::keyNames($class) as $key)
-                        $query->where('%s = ?', $key);
-
+                self::whereKeys($query, $class);
                 return $query;
         }
 
@@ -490,10 +504,7 @@ abstract class TLO
                 if ($additional)
                         $query->merge($additional);
 
-                $s = self::prepare($db, $query);
-                $s->setFetchMode(PDO::FETCH_CLASS, $class);
-                self::execute($s, $params);
-                return new TLOObjectResult($s);
+                return new TLOObjectResult(self::execFetchClass($db, $class, $query, $params));
         }
 
         /** Load a single object from the database **/
@@ -740,9 +751,7 @@ abstract class TLORelationship
                         });
                 });
 
-                foreach (TLO::keyNames($location_class) as $key)
-                        $query->where('%s = ?', $key);
-
+                TLO::whereKeys($query, $location_class);
                 return $query;
         }
 
@@ -762,9 +771,7 @@ abstract class TLORelationship
                         });
                 });
 
-                foreach (TLO::keyNames($location_class) as $key)
-                        $query->where('%s = ?', $key);
-
+                TLO::whereKeys($query, $location_class);
                 return $query;
         }
 
@@ -788,9 +795,7 @@ abstract class TLORelationship
                         });
                 });
 
-                foreach (TLO::keyNames($location_class) as $key)
-                        $query->where('%s = ?', $key);
-
+                TLO::whereKeys($query, $location_class);
                 return $query;
         }
 
@@ -845,11 +850,7 @@ abstract class TLORelationship
                 if (!is_a($obj, $c_obj))
                         throw new TLOException('Object of type "%s" is not a subclass of "%s"', get_class($obj), $c_obj);
 
-                $s = TLO::prepare($db, $query);
-                $s->setFetchMode(PDO::FETCH_CLASS, $relationship);
-                TLO::execute($s, $params);
-
-                return new TLORelationshipResult($db, $s, $keys, $c_rel, $rel_keys);
+                return new TLORelationshipResult($db, TLO::execFetchClass($db, $relationship, $query, $params), $keys, $c_rel, $rel_keys);
         }
 
         /** Wrap getRel() to get the "one" side of the relationship **/
