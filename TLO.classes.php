@@ -654,15 +654,15 @@ abstract class TLO
         # Relationships
 
         /** Shortcut to get "many" side relationships associated with this object **/
-        public function rels(PDO $db, $relationship)
+        public function getRelsMany(PDO $db, $relationship)
         {
-                return TLORelationship::getMany($relationship, $this);
+                return TLORelationship::getMany($db, $relationship, $this);
         }
 
         /** Shortcut to get the "one" side relationship associated with this object **/
-        public function rel(PDO $db, $relationship)
+        public function getRelOne(PDO $db, $relationship)
         {
-                return TLORelationship::getOne($relationship, $this);
+                return TLORelationship::getOne($db, $relationship, $this);
         }
 }
 
