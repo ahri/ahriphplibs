@@ -2,7 +2,7 @@
 /*******************************************************************************
  *
  *        Title:  TLO (Tiny Loadable Objects)
- *`
+ *
  *  Description:  A small object-relational mapper that will soon support
  *                relationships and automatic routing
  *
@@ -307,7 +307,7 @@ abstract class TLO
                 $query->{'values'}();
                 foreach ($not_nulls as $p) {
                         $query->{'insert'}($p);
-                        $query->{'values'}(sprintf(':%s', $p));
+                        $query->{'values'}(':%s', $p);
                 }
 
                 return $query;
@@ -338,10 +338,10 @@ abstract class TLO
                         # make the joins
                         if ($last_c)
                                 foreach ($keys as $key)
-                                        $query->where(sprintf('%s.%s__key__%s = %s.%s', $base::transClassTable($last_c), $base::PARENT_RELATIONSHIP, $key, $table, $key));
+                                        $query->where('%s.%s__key__%s = %s.%s', $base::transClassTable($last_c), $base::PARENT_RELATIONSHIP, $key, $table, $key);
 
                         if ($keys[0] == $base::AUTO_PROPERTY_ID)
-                                $query->select(sprintf('%s.%s AS %s', $table, $base::AUTO_PROPERTY_ID, $base::autoPropertyAlias($table)));
+                                $query->select('%s.%s AS %s', $table, $base::AUTO_PROPERTY_ID, $base::autoPropertyAlias($table));
 
                         $base::propertyLoop($c, $base, function ($p) use ($query) {
                                 $query->select($p);
@@ -363,11 +363,11 @@ abstract class TLO
                         $query->update($base::transClassTable($c));
                         $assignments = array();
                         $base::propertyLoop($c, $base, function ($p) use ($base, $query) {
-                                $query->set(sprintf('%s = :%s', $p, $p));
+                                $query->set('%s = :%s', $p, $p);
                         });
 
                         foreach ($base::keyNames($c) as $key)
-                                $query->where(sprintf('%s = :%s', $key, $base::keyAlias($key)));
+                                $query->where('%s = :%s', $key, $base::keyAlias($key));
 
                         $queries[$c] = $query;
                 });
@@ -381,7 +381,7 @@ abstract class TLO
                 $query->delete();
                 $query->from(self::transClassTable($class));
                 foreach (TLO::keyNames($class) as $key)
-                        $query->where(sprintf('%s = ?', $key));
+                        $query->where('%s = ?', $key);
 
                 return $query;
         }
@@ -505,7 +505,7 @@ abstract class TLO
 
                 $query = new TLOQuery();
                 foreach ($keys as $key_name)
-                        $query->where(sprintf('%s.%s = ?', self::transClassTable($class), $key_name));
+                        $query->where('%s.%s = ?', self::transClassTable($class), $key_name);
 
                 $r = self::getObjects($db, $class, $query, $key_vals);
                 return $r->fetch();
@@ -705,12 +705,12 @@ abstract class TLORelationship
                 foreach (TLO::keyNames($relation_class) as $key) {
                         $keyname = TLO::developedColName($relname, 'key', $key);
                         $query->select($keyname);
-                        $query->where(sprintf('%s IS NOT NULL', $keyname));
+                        $query->where('%s IS NOT NULL', $keyname);
                 }
 
                 TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
                         TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
-                                $query->select(sprintf('%s AS %s', TLO::developedColName($relname, 'var', $p), $p));
+                                $query->select('%s AS %s', TLO::developedColName($relname, 'var', $p), $p);
                         });
                 });
 
@@ -729,16 +729,16 @@ abstract class TLORelationship
 
 
                 foreach (TLO::keyNames($relation_class) as $key)
-                        $query->set(sprintf('%s = ?', TLO::developedColName($relname, 'key', $key)));
+                        $query->set('%s = ?', TLO::developedColName($relname, 'key', $key));
 
                 TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
                         TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
-                                $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'var', $p), $p));
+                                $query->set('%s = NULL', TLO::developedColName($relname, 'var', $p), $p);
                         });
                 });
 
                 foreach (TLO::keyNames($location_class) as $key)
-                        $query->where(sprintf('%s = ?', $key));
+                        $query->where('%s = ?', $key);
 
                 return $query;
         }
@@ -755,12 +755,12 @@ abstract class TLORelationship
 
                 TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
                         TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
-                                $query->set(sprintf('%s = ?', TLO::developedColName($relname, 'var', $p), $p));
+                                $query->set('%s = ?', TLO::developedColName($relname, 'var', $p), $p);
                         });
                 });
 
                 foreach (TLO::keyNames($location_class) as $key)
-                        $query->where(sprintf('%s = ?', $key));
+                        $query->where('%s = ?', $key);
 
                 return $query;
         }
@@ -777,16 +777,16 @@ abstract class TLORelationship
 
 
                 foreach (TLO::keyNames($relation_class) as $key)
-                        $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'key', $key)));
+                        $query->set('%s = NULL', TLO::developedColName($relname, 'key', $key));
 
                 TLO::concreteClassLoop($relationship, __CLASS__, function ($class) use ($relname, $query) {
                         TLO::propertyLoop($class, __CLASS__, function ($p) use ($relname, $query) {
-                                $query->set(sprintf('%s = NULL', TLO::developedColName($relname, 'var', $p), $p));
+                                $query->set('%s = NULL', TLO::developedColName($relname, 'var', $p), $p);
                         });
                 });
 
                 foreach (TLO::keyNames($location_class) as $key)
-                        $query->where(sprintf('%s = ?', $key));
+                        $query->where('%s = ?', $key);
 
                 return $query;
         }
@@ -815,7 +815,7 @@ abstract class TLORelationship
 
                         $params = array();
                         foreach ($obj->getKeys($c_obj) as $key => $val) {
-                                $query->where(sprintf('%s = ?', $key));
+                                $query->where('%s = ?', $key);
                                 $params[] = $val;
                         }
 
@@ -829,7 +829,7 @@ abstract class TLORelationship
 
                         $params = array();
                         foreach ($obj->getKeys($c_obj) as $key => $val) {
-                                $query->where(sprintf('%s = ?', TLO::developedColName($relname, 'key', $key)));
+                                $query->where('%s = ?', TLO::developedColName($relname, 'key', $key));
                                 $params[] = $val;
                         }
 
@@ -1114,23 +1114,21 @@ class TLOQuery
         protected $items = array();
 
         /** Add part of a query **/
-        public function add($item, $values)
+        public function add($item, $value = NULL)
         {
                 $item = strtoupper($item);
                 if (!isset($this->items[$item]))
                         $this->items[$item] = array();
 
-                foreach ($values as $value)
+                if (!empty($value))
                         $this->items[$item][] = $value;
         }
 
         /** Neatly wrap ->add() **/
         public function __call($method, $args)
         {
-                if (sizeof($args) == 1 && is_array($args[0]))
-                        $args = $args[0];
-
-                $this->add($method, $args);
+                $format = array_shift($args);
+                $this->add($method, vsprintf($format, $args));
         }
 
         /** Build the query in the correct order **/
@@ -1168,8 +1166,7 @@ class TLOQuery
         /** Merge in the contents of another TLOQuery **/
         public function merge(TLOQuery $other)
         {
-                foreach ($other->items as $key => $vals)
-                        $this->add($key, $vals);
+                $this->items = array_merge_recursive($this->items, $other->items);
         }
 }
 
