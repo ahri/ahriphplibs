@@ -375,6 +375,7 @@ abstract class TLO
                 return $queries;
         }
 
+        /** Generate SQL to delete the given class **/
         public static function sqlDelete($class)
         {
                 $query = new TLOQuery();
@@ -652,11 +653,13 @@ abstract class TLO
         ##################################
         # Relationships
 
+        /** Shortcut to get "many" side relationships associated with this object **/
         public function rels(PDO $db, $relationship)
         {
                 return TLORelationship::getMany($relationship, $this);
         }
 
+        /** Shortcut to get the "one" side relationship associated with this object **/
         public function rel(PDO $db, $relationship)
         {
                 return TLORelationship::getOne($relationship, $this);
