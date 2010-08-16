@@ -515,7 +515,7 @@ abstract class TLO
                 if ($additional)
                         $query->merge($additional);
 
-                return new TLOObjectResult(self::execFetchClass($db, $class, $query, $params));
+                return new TLOObjectResult($db, self::execFetchClass($db, $class, $query, $params));
         }
 
         /** Load a single object from the database **/
@@ -567,13 +567,28 @@ abstract class TLO
         ##################################
         # Dynamic items
 
-        /** Store keys for each class; these tie the object to a row in the database **/
-        private $keys = array();
+        private $_db = NULL;
+        private $_keys = array();
+
+        /** Keep a note of which database object was used to create this object**/
+        public function setDb(PDO $db)
+        {
+                $this->_db = $db;
+        }
+
+        /** Keep track of keys by class, ensuring ability to track back to database row **/
+        public function setKeys($class, array $keys)
+        {
+                if (isset($this->_keys[$class]))
+                        throw new TloException('Keys for class "%s" are already set', $class);
+
+                $this->_keys[$class] = $keys;
+        }
 
         /** Returns the keys for the specified class of this object **/
         public function getKeys($class)
         {
-                return $this->keys[$class];
+                return $this->_keys[$class];
         }
 
         /** Get the Auto ID **/
@@ -585,15 +600,6 @@ abstract class TLO
 
                 $keys = $this->getKeys($class);
                 return reset($keys);
-        }
-
-        /** Keep track of keys by class, ensuring ability to track back to database row **/
-        public function setKeys($class, array $keys)
-        {
-                if (isset($this->keys[$class]))
-                        throw new TloException('Keys for class "%s" are already set', $class);
-
-                $this->keys[$class] = $keys;
         }
 
         /** Get a variable, hack around protected vars, consider alternatives (but note that it's being called at object creation, i.e. a lot **/
@@ -634,8 +640,11 @@ abstract class TLO
         }
 
         /** Write the object to the database **/
-        public function write(PDO $db)
+        public function write(PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 foreach (self::sqlWrite(get_class($this)) as $class => $query) {
                         $vars = array();
                         foreach ($this->properties($class) as $p)
@@ -646,7 +655,7 @@ abstract class TLO
 
                                 # update stored keys if the user changes them
                                 if ($key != self::AUTO_PROPERTY_ID && $stored_val != $this->$key)
-                                        $this->keys[$class][$key] = $this->$key;
+                                        $this->_keys[$class][$key] = $this->$key;
                         }
 
                         $s = self::prepare($db, $query);
@@ -655,8 +664,11 @@ abstract class TLO
         }
 
         /** Delete the top class for the current object from the database **/
-        public function delete(PDO $db)
+        public function delete(PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 $s = self::prepare($db, self::sqlDelete(get_class($this)));
                 self::execute($s, array_values($this->getKeys(get_class($this))));
         }
@@ -676,14 +688,20 @@ abstract class TLO
         # Relationships
 
         /** Shortcut to get "many" side relationships associated with this object **/
-        public function getRelsMany(PDO $db, $relationship)
+        public function getRelsMany($relationship, PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 return TLORelationship::getMany($db, $relationship, $this);
         }
 
         /** Shortcut to get the "one" side relationship associated with this object **/
-        public function getRelOne(PDO $db, $relationship)
+        public function getRelOne($relationship, PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 return TLORelationship::getOne($db, $relationship, $this);
         }
 }
@@ -691,9 +709,6 @@ abstract class TLO
 /** Represent a relationship **/
 abstract class TLORelationship
 {
-        protected $keys = NULL;
-        protected $relation = NULL;
-
         const TYPE_ONE = 1;
         const TYPE_MANY = 2;
 
@@ -898,6 +913,16 @@ abstract class TLORelationship
         ##################################
         # Dynamic items
 
+        protected $_db = NULL;
+        protected $_relation = NULL;
+        protected $_keys = NULL;
+
+        /** Keep a note of which database object was used to create this object**/
+        public function setDb(PDO $db)
+        {
+                $this->_db = $db;
+        }
+
         /** Store the relevant keys for the object for accounting purposes, remove the auto-generated ID artefacts from the object **/
         public final function storeKeys()
         {
@@ -911,13 +936,13 @@ abstract class TLORelationship
         }
 
         /** Load and store the relation object **/
-        public final function storeRelation(PDO $db, $class, $key_names)
+        public final function storeRelation($class, $key_names)
         {
                 $rel_keys = array();
                 foreach ($key_names as $key)
                         $rel_keys[] = $this->$key;
 
-                $this->setRelation(TLO::getObject($db, $class, $rel_keys));
+                $this->setRelation(TLO::getObject($this->_db, $class, $rel_keys));
         }
 
         /**
@@ -932,36 +957,39 @@ abstract class TLORelationship
         /** Set the keys (once) with which we can track the relationship (i.e. the keys of the "many" side row) **/
         public function setKeys(array $keys)
         {
-                if (!is_null($this->keys))
+                if (!is_null($this->_keys))
                         throw new TloException('Keys are already set');
 
-                $this->keys = $keys;
+                $this->_keys = $keys;
         }
 
         /** Get the keys to the relationship row in the "many" side table **/
         public function getKeys()
         {
-                return $this->keys;
+                return $this->_keys;
         }
 
         /** Set the relation object (once) **/
         public function setRelation(TLO $relation)
         {
-                if (!is_null($this->relation))
+                if (!is_null($this->_relation))
                         throw new TLOException('Relation already set');
 
-                $this->relation = $relation;
+                $this->_relation = $relation;
         }
 
         /** Get the relation object for this relationship **/
         public function getRelation()
         {
-                return $this->relation;
+                return $this->_relation;
         }
 
         /** Write the relationship to the DB **/
-        public function write(PDO $db)
+        public function write(PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 $relationship = get_class($this);
                 $relname = TLO::transClassTable($relationship);
                 $location_class = $relationship::relationMany();
@@ -985,8 +1013,11 @@ abstract class TLORelationship
         }
 
         /** Delete the relationship from the DB **/
-        public function delete(PDO $db)
+        public function delete(PDO $db = NULL)
         {
+                if (is_null($db))
+                        $db = $this->_db;
+
                 $relationship = get_class($this);
                 $query = self::sqlDelete($relationship);
                 $s = TLO::prepare($db, $query);
@@ -997,11 +1028,13 @@ abstract class TLORelationship
 /** Fetch an object from the DB (via PDO) and execute ->__setup() on it before returning it **/
 class TLOObjectResult implements Iterator
 {
+        public $_db = NULL;
         public $_statement = NULL;
 
         /** Wrap a PDOStatement **/
-        public function __construct(PDOStatement $statement)
+        public function __construct(PDO $db, PDOStatement $statement)
         {
+                $this->_db = $db;
                 $this->_statement = $statement;
         }
 
@@ -1009,6 +1042,7 @@ class TLOObjectResult implements Iterator
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch()) {
+                        $obj->setDb($this->_db);
                         $obj->storeKeys();
                         $obj->__setup();
                 }
@@ -1054,7 +1088,10 @@ class TLOObjectResult implements Iterator
 /** Fetch a relationship's variables and the relation object from the DB (via PDO) **/
 class TLORelationshipResult implements Iterator
 {
+        public $_db = NULL;
         public $_statement = NULL;
+        public $_rel_class = NULL;
+        public $_rel_key_names = NULL;
 
         /** Wrap a PDOStatement and give instructions on what object to load based on which keys **/
         public function __construct(PDO $db, PDOStatement $statement, $rel_class, $rel_key_names)
@@ -1069,8 +1106,9 @@ class TLORelationshipResult implements Iterator
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch()) {
+                        $obj->setDb($this->_db);
                         $obj->storeKeys();
-                        $obj->storeRelation($this->_db, $this->_rel_class, $this->_rel_key_names);
+                        $obj->storeRelation($this->_rel_class, $this->_rel_key_names);
 
                         # remove the keys
                         $objclass = get_class($obj);

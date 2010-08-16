@@ -73,24 +73,6 @@ expectError($x)                 Swallows any upcoming matching error
 assert($e)                      Fail on failed expectation object $e
 */
 
-/*
-NOT TESTED: TLO::autoPropertyAlias
-NOT TESTED: TLO::parentKeyName
-NOT TESTED: TLO::sqlCreate
-NOT TESTED: TLO::newObject
-NOT TESTED: TLO::guid
-NOT TESTED: TLO::keyConst
-NOT TESTED: TLO::keyAuto
-NOT TESTED: TLO::keyNames
-NOT TESTED: TLO->getKeys
-NOT TESTED: TLO->setKeys
-NOT TESTED: TLO->getVar
-NOT TESTED: TLO->storeKeys
-NOT TESTED: TLO->setup
-NOT TESTED: TLO->write
-NOT TESTED: TLO->properties
-*/
-
 class TestLoops extends UnitTestCase
 {
         public function testPropertyLoop()
@@ -270,6 +252,7 @@ class TestDbAccess extends UnitTestCase
                 $this->guid2 = TLO::guid();
                 $this->guid3 = TLO::guid();
                 $this->guid4 = TLO::guid();
+                $this->guid5 = TLO::guid();
 
                 SSql::setup('sqlite::memory:');
                 $this->db = SSql::instance();
@@ -280,12 +263,14 @@ class TestDbAccess extends UnitTestCase
                 $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid2}', 1)");
                 $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid3}', '{$this->guid2}', 2, 3)");
                 $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid4}', '{$this->guid1}', 2, 3)");
+                $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid5}', '{$this->guid1}', 2, 3)");
         }
 
         public function testReadAllItems()
         {
                 $r = TLO::getObjects($this->db, 'Test3');
                 $this->assertIsA($r, 'TLOObjectResult');
+                $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertIsA($r->fetch(), 'Test3');
                 $this->assertFalse($r->fetch());
@@ -317,10 +302,28 @@ class TestDbAccess extends UnitTestCase
                 $this->assertEqual(array_pop($r), '10');
         }
 
+        public function testWritingDefaultDb()
+        {
+                $this->o->baz = 10;
+                $this->assertNull($this->o->write());
+                $s = $this->db->query("SELECT baz FROM test3 WHERE id = '{$this->guid4}'");
+                $this->assertIsA($s,'PDOStatement');
+                $r = $s->fetch(PDO::FETCH_ASSOC);
+                $this->assertEqual(array_pop($r), '10');
+        }
+
         public function testDeleteObject()
         {
-                $this->o->delete($this->db);
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid4));
+                $t->delete($this->db);
                 $this->assertFalse(TLO::getObject($this->db, 'Test3', array($this->guid4)));
+        }
+
+        public function testDeleteObjectDefaultDb()
+        {
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid5));
+                $t->delete();
+                $this->assertFalse(TLO::getObject($this->db, 'Test3', array($this->guid5)));
         }
 
         public function testNew()
@@ -357,6 +360,7 @@ class TestRelationships extends UnitTestCase
 
                 $this->guid1 = TLO::guid();
                 $this->guid2 = TLO::guid();
+                $this->guid3 = TLO::guid();
 
                 SSql::setup('sqlite::memory:');
                 $this->db = SSql::instance();
@@ -364,6 +368,7 @@ class TestRelationships extends UnitTestCase
                 $this->db->exec('CREATE TABLE test3 (id CHAR('.strlen($this->guid1).') PRIMARY KEY, parent__key__id CHAR('.strlen($this->guid1).'), bar INTEGER, baz INTEGER)');
                 $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid1}', 1, '{$this->guid2}', 'foo', datetime('now'))");
                 $this->db->exec("INSERT INTO test3 VALUES ('{$this->guid2}', '{$this->guid1}', 2, 3)");
+                $this->db->exec("INSERT INTO test1 VALUES ('{$this->guid3}', 1, '{$this->guid2}', 'foo', datetime('now'))");
         }
 
         public function testStaticDiscovery()
@@ -423,11 +428,32 @@ class TestRelationships extends UnitTestCase
                 $this->assertEqual($connected_to->somevar, 'test write');
         }
 
+        public function testWriteDefaultDb()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
+                $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $connected_to->somevar = 'test write';
+                $connected_to->write();
+
+                $t = TLO::getObject($this->db, 'Test3', array($this->guid2));
+                $p_connected_to = TLORelationship::getMany($this->db, 'ConnectedTo', $t);
+                $connected_to = $p_connected_to->fetch();
+                $this->assertEqual($connected_to->somevar, 'test write');
+        }
+
         public function testDelete()
         {
                 $t = TLO::getObject($this->db, 'Test1', array($this->guid1));
                 $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
                 $connected_to->delete($this->db);
+                $this->assertFalse(TLORelationship::getOne($this->db, 'ConnectedTo', $t));
+        }
+
+        public function testDeleteDefaultDb()
+        {
+                $t = TLO::getObject($this->db, 'Test1', array($this->guid3));
+                $connected_to = TLORelationship::getOne($this->db, 'ConnectedTo', $t);
+                $connected_to->delete();
                 $this->assertFalse(TLORelationship::getOne($this->db, 'ConnectedTo', $t));
         }
 }
