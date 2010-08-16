@@ -3,8 +3,8 @@
  *
  *        Title:  TLO (Tiny Loadable Objects)
  *
- *  Description:  A small object-relational mapper that will soon support
- *                relationships and automatic routing
+ *  Description:  A small object-relational mapper supporting relationships and
+ *                soon automatic routing too!
  *
  * Requirements:  PHP 5.3.0+
  *
