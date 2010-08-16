@@ -630,7 +630,7 @@ abstract class TLO
         **/
         public function __setup()
         {
-                $this->storeKeys();
+                # stub
         }
 
         /** Write the object to the database **/
@@ -821,8 +821,6 @@ abstract class TLORelationship
                 $c_many = $relationship::relationMany();
                 $relname = TLO::transClassTable($relationship);
 
-                $keys = TLO::keyNames($c_many);
-
                 switch ($type) {
                 case self::TYPE_ONE:
                         $c_obj = $c_many;
@@ -861,7 +859,7 @@ abstract class TLORelationship
                 if (!is_a($obj, $c_obj))
                         throw new TLOException('Object of type "%s" is not a subclass of "%s"', get_class($obj), $c_obj);
 
-                return new TLORelationshipResult($db, TLO::execFetchClass($db, $relationship, $query, $params), $keys, $c_rel, $rel_keys);
+                return new TLORelationshipResult($db, TLO::execFetchClass($db, $relationship, $query, $params), $c_rel, $rel_keys);
         }
 
         /** Wrap getRel() to get the "one" side of the relationship **/
@@ -899,6 +897,37 @@ abstract class TLORelationship
 
         ##################################
         # Dynamic items
+
+        /** Store the relevant keys for the object for accounting purposes, remove the auto-generated ID artefacts from the object **/
+        public final function storeKeys()
+        {
+                        # set the keys
+                        $keys = array();
+                        $thisclass = get_class($this);
+                        foreach (TLO::keyNames($thisclass::relationMany()) as $key)
+                                $keys[$key] = $this->$key;
+
+                        $this->setKeys($keys);
+        }
+
+        /** Load and store the relation object **/
+        public final function storeRelation(PDO $db, $class, $key_names)
+        {
+                $rel_keys = array();
+                foreach ($key_names as $key)
+                        $rel_keys[] = $this->$key;
+
+                $this->setRelation(TLO::getObject($db, $class, $rel_keys));
+        }
+
+        /**
+        Method to be called right after population of vars occurs
+        NB. this is the TLO version of a "constructor", since the true __construct() will be called by PDO prior to populating the variables
+        **/
+        public function __setup()
+        {
+                # stub
+        }
 
         /** Set the keys (once) with which we can track the relationship (i.e. the keys of the "many" side row) **/
         public function setKeys(array $keys)
@@ -979,8 +1008,10 @@ class TLOObjectResult implements Iterator
         /** Fetch an object from the DB and execute ->__setup() **/
         public function fetch()
         {
-                if ($obj = $this->_statement->fetch())
+                if ($obj = $this->_statement->fetch()) {
+                        $obj->storeKeys();
                         $obj->__setup();
+                }
 
                 return $obj;
         }
@@ -1026,11 +1057,10 @@ class TLORelationshipResult implements Iterator
         public $_statement = NULL;
 
         /** Wrap a PDOStatement and give instructions on what object to load based on which keys **/
-        public function __construct(PDO $db, PDOStatement $statement, $key_names, $rel_class, $rel_key_names)
+        public function __construct(PDO $db, PDOStatement $statement, $rel_class, $rel_key_names)
         {
                 $this->_db = $db;
                 $this->_statement = $statement;
-                $this->_key_names = $key_names;
                 $this->_rel_class = $rel_class;
                 $this->_rel_key_names = $rel_key_names;
         }
@@ -1039,21 +1069,15 @@ class TLORelationshipResult implements Iterator
         public function fetch()
         {
                 if ($obj = $this->_statement->fetch()) {
-                        # set the keys
-                        $keys = array();
-                        foreach ($this->_key_names as $key)
-                                $keys[$key] = $obj->$key;
+                        $obj->storeKeys();
+                        $obj->storeRelation($this->_db, $this->_rel_class, $this->_rel_key_names);
 
-                        $obj->setKeys($keys);
+                        # remove the keys
+                        $objclass = get_class($obj);
+                        foreach (array_merge(TLO::keyNames($objclass::relationMany()), $this->_rel_key_names) as $key)
+                                unset($this->$key);
 
-                        # set the relation object
-                        $rel_keys = array();
-                        foreach ($this->_rel_key_names as $key) {
-                                $rel_keys[] = $obj->$key;
-                                unset($obj->$key);
-                        }
-
-                        $obj->setRelation(TLO::getObject($this->_db, $this->_rel_class, $rel_keys));
+                        $obj->__setup();
                 }
 
                 return $obj;
