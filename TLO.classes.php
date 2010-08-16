@@ -273,7 +273,12 @@ abstract class TLO
                         $statement = $db->prepare($query);
                 }
                 catch (PDOException $e) {
-                        throw new PDOException(sprintf('Error: %s, preparing: "%s"', $e->getmessage(), $query));
+                        if (php_sapi_name() == 'cli')
+                                $msg = sprintf("Error: %s\nPreparing: \"%s\"\n", $e->getmessage(), $query);
+                        else
+                                $msg = sprintf("<b>Error:</b>%s<br/>\n<b>Preparing:</b> \"%s\"", $e->getmessage(), $query);
+
+                        throw new PDOException($msg);
                 }
 
                 return $statement;
@@ -289,7 +294,13 @@ abstract class TLO
                         var_dump($args);
                         $dump = ob_get_contents();
                         ob_end_clean();
-                        throw new PDOException(sprintf('Error: %s, executing: "%s" with args: %s', $e->getmessage(), $statement->queryString, $dump));
+
+                        if (php_sapi_name() == 'cli')
+                                $msg = sprintf("Error: %s\nExecuting: \"%s\"\nParams: %s\n", $e->getmessage(), $statement->queryString, $dump);
+                        else
+                                $msg = sprintf("<b>Error: </b>%s<br/>\n<b>Executing:</b> \"%s\"<br/>\n<b>Params:</b> %s", $e->getmessage(), $statement->queryString, $dump);
+
+                        throw new PDOException($msg);
                 }
         }
 
