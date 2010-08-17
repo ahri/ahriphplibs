@@ -1,6 +1,6 @@
 <?php
 
-# Wrap Exception so we have sprintf() capabilities by default
+/** Wrap Exception so we have sprintf() capabilities by default **/
 class SPFException extends Exception
 {
         public function __construct()
