@@ -1,6 +1,6 @@
 Abstract:
 
-        TLO (Tiny, Loadable Objects) is aimed at creating the smallest useable
+        TLO (Tiny, Loadable Objects) is aimed at creating the smallest usable
         ORM (Object Relational Model/Mapper) in order to facilitate easy and
         fast prototyping.
 
