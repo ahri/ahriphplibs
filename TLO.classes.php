@@ -759,6 +759,24 @@ abstract class TLO
 
                 return TLORelationship::getOne($db, $relationship, $this);
         }
+
+        /** Shortcut to add a relationship, passing in the "many" side **/
+        public function newRelMany($relationship, TLO $relation, PDO $db = NULL)
+        {
+                if (is_null($db))
+                        $db = $this->_db;
+
+                return TLORelationship::newObject($db, $relationship, $this, $relation);
+        }
+
+        /** Shortcut to add a relationship, passing in the "one" side **/
+        public function newRelOne($relationship, TLO $relation, PDO $db = NULL)
+        {
+                if (is_null($db))
+                        $db = $this->_db;
+
+                return TLORelationship::newObject($db, $relationshipv, $relation, $this);
+        }
 }
 
 /** Represent a relationship **/

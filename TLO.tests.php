@@ -41,15 +41,8 @@ class ConnectedTo extends TimeRel
 {
         public $somevar;
 
-        public static function relationOne()
-        {
-                return 'Test3';
-        }
-
-        public static function relationMany()
-        {
-                return 'Test1';
-        }
+        public static function relationOne()  { return 'Test3'; }
+        public static function relationMany() { return 'Test1'; }
 }
 
 /*
