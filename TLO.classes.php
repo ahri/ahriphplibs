@@ -1,7 +1,7 @@
 <?php
 /*******************************************************************************
  *
- *        Title:  TLO (Tiny Loadable Objects)
+ *        Title:  TLO (Tiny, Loadable Objects)
  *
  *  Description:  A small object-relational mapper supporting relationships and
  *                soon automatic routing too!
