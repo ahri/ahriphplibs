@@ -6,7 +6,8 @@ class SPFException extends Exception
         public function __construct()
         {
                 $args = func_get_args();
-                parent::__construct(call_user_func_array('sprintf', $args));
+                $format = array_shift($args);
+                parent::__construct(vsprintf($format, $args));
         }
 }
 
