@@ -412,6 +412,40 @@ abstract class TLO
                 return $query;
         }
 
+        protected static $_tlo_classes = NULL;
+        protected static $_tlo_relationship_classes = NULL;
+
+        /** Run through all classes and cache the relevant TLO/TLORelationship classes **/
+        public static function classDetect()
+        {
+                if (!is_null(self::$_tlo_classes))
+                        return;
+
+                self::$_tlo_classes = array();
+                self::$_tlo_relationship_classes = array();
+                foreach (get_declared_classes() as $class) {
+                        $reflect = new ReflectionClass($class);
+                        if ($reflect->isAbstract())
+                                continue;
+
+                        if (is_subclass_of($class, 'TLO'))
+                                self::$_tlo_classes[] = $class;
+
+                        if (is_subclass_of($class, 'TLORelationship')) {
+                                try {
+                                        $class::relationOne();
+                                        $many_side = $class::relationMany();
+                                } catch (TLOException $e) {
+                                        throw new TLOException('Class "%s" does not have both static functions "relationMany" and "relationOne" set up', $class);
+                                }
+                                if (!isset(self::$_tlo_relationship_classes[$many_side]))
+                                        self::$_tlo_relationship_classes[$many_side] = array();
+
+                                self::$_tlo_relationship_classes[$many_side][] = $class;
+                        }
+                }
+        }
+
         /**
         Generate some fairly generic SQL to help create the table for a class (including its inherited abstract vars)
         NB. Will not include the variables for inherited concrete classes
@@ -443,6 +477,27 @@ abstract class TLO
                         $properties[] = $p;
                 });
 
+                self::classDetect();
+                if (isset(self::$_tlo_relationship_classes[$class])) {
+                        foreach (self::$_tlo_relationship_classes[$class] as $rel) {
+                                $relname = TLO::transClassTable($rel);
+                                $one_side = $rel::relationOne();
+
+                                $rel_keys = TLO::keyNames($one_side);
+                                if (TLO::keyAuto($one_side))
+                                        $properties[] = sprintf('%s CHAR(%d)', TLO::developedColName($relname, 'key', $rel_keys[0]), strlen($base::guid()));
+                                else
+                                        foreach ($rel_keys as $key)
+                                                $properties[] = TLO::developedColName($relname, 'key', $key);
+
+                                TLO::concreteClassLoop($rel, 'TLORelationship', function ($class) use ($relname, &$properties) {
+                                        TLO::propertyLoop($class, 'TLORelationship', function ($p) use ($relname, &$properties) {
+                                                $properties[] = TLO::developedColName($relname, 'var', $p);
+                                        });
+                                });
+                        }
+                }
+
                 return sprintf("CREATE TABLE %s (%s, PRIMARY KEY (%s));\n",
                                self::transClassTable($class),
                                implode(', ', array_map(function ($p) {
@@ -454,11 +509,11 @@ abstract class TLO
         /** Generate the SQL to create all TLO descended classes **/
         public static function sqlCreateAll()
         {
+                self::classDetect();
                 $sql = '';
-                foreach (get_declared_classes() as $class) {
-                        if (is_subclass_of($class, self::BASE) && $class != self::BASE)
-                                $sql .= self::sqlCreate($class);
-                }
+                foreach (self::$_tlo_classes as $class)
+                        $sql .= self::sqlCreate($class);
+
                 return $sql;
         }
 

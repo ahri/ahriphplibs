@@ -32,7 +32,7 @@ class TestNamed extends Test2
         public $stuff;
 }
 
-class TimeRel extends TLORelationship
+abstract class TimeRel extends TLORelationship
 {
         public $time;
 }
@@ -226,7 +226,7 @@ class TestSqlConstruction extends UnitTestCase
 
         public function testSqlCreate()
         {
-                $this->assertEqual(TLO::sqlCreate('Test1'), "CREATE TABLE test1 (id CHAR(40), foo VARCHAR(25), PRIMARY KEY (id));\n");
+                $this->assertEqual(TLO::sqlCreate('Test1'), "CREATE TABLE test1 (id CHAR(40), foo VARCHAR(25), connected_to__key__id CHAR(40), connected_to__var__somevar VARCHAR(25), connected_to__var__time VARCHAR(25), PRIMARY KEY (id));\n");
                 $this->assertFalse(TLO::sqlCreate('Test2'));
                 $this->assertEqual(TLO::sqlCreate('Test3'), "CREATE TABLE test3 (id CHAR(40), parent__key__id CHAR(40), baz VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (id));\n");
                 $this->assertEqual(TLO::sqlCreate('TestNamed'), "CREATE TABLE test_named (key1 VARCHAR(25), key2 VARCHAR(25), parent__key__id CHAR(40), key1 VARCHAR(25), key2 VARCHAR(25), stuff VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (key1, key2));\n");
@@ -234,7 +234,7 @@ class TestSqlConstruction extends UnitTestCase
 
         public function testSqlCreateAll()
         {
-                $this->assertEqual(TLO::sqlCreateAll(), "CREATE TABLE test1 (id CHAR(40), foo VARCHAR(25), PRIMARY KEY (id));\nCREATE TABLE test3 (id CHAR(40), parent__key__id CHAR(40), baz VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (id));\nCREATE TABLE test_named (key1 VARCHAR(25), key2 VARCHAR(25), parent__key__id CHAR(40), key1 VARCHAR(25), key2 VARCHAR(25), stuff VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (key1, key2));\n");
+                $this->assertEqual(TLO::sqlCreateAll(), "CREATE TABLE test1 (id CHAR(40), foo VARCHAR(25), connected_to__key__id CHAR(40), connected_to__var__somevar VARCHAR(25), connected_to__var__time VARCHAR(25), PRIMARY KEY (id));\nCREATE TABLE test3 (id CHAR(40), parent__key__id CHAR(40), baz VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (id));\nCREATE TABLE test_named (key1 VARCHAR(25), key2 VARCHAR(25), parent__key__id CHAR(40), key1 VARCHAR(25), key2 VARCHAR(25), stuff VARCHAR(25), bar VARCHAR(25), PRIMARY KEY (key1, key2));\n");
         }
 }
 
